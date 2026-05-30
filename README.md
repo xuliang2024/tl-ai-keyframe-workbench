@@ -44,6 +44,10 @@ http://localhost:4173/index.html
 - 保存项目数据
 - 导出帧图和视频生成任务配置
 
+## 技术设计
+
+- [表结构设计](docs/schema-design.md)
+
 ## License
 
 MIT
