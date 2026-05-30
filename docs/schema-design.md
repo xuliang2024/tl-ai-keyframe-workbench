@@ -8,11 +8,19 @@
 
 - 项目只保存项目级配置，比如名称、描述、宽高比。
 - 剧本在 MVP 里一个项目只保留一份正文，不做复杂分场表。
-- 资产库统一管理角色、场景、道具、其他素材，图片文件独立进媒体表。
+- 资产库统一管理角色、场景、道具、其他素材，图片存在火山 TOS 桶里，数据库只记录文件链接。
 - 关键帧记录故事信息和时长，是后续视频节奏的核心表。
 - 帧版本记录每次生成出的图片，一帧可以有多个版本，当前选中版本挂在 `frames.selected_version_id`。
-- 生成任务统一记录 GPT Image、图片编辑、Seedance 2 等模型调用，方便排队、重试和审计。
+- 生成任务统一记录图片、图片编辑、视频等模型调用，方便排队、重试和审计；模型选择由后端配置决定，前端不暴露模型切换。
 - 视频相关先预留最小表，不和图片帧工作台搅在一起。
+
+## MySQL 约定
+
+- 数据库使用 MySQL 8.x，字符集统一 `utf8mb4`。
+- UUID 使用 `char(36)` 保存，由应用层生成。
+- JSON 字段使用 MySQL `json` 类型，默认 `{}` 或 `[]` 由应用层写入。
+- 时间字段使用 `datetime(6)`，更新时间字段加 `on update current_timestamp(6)`。
+- 外键统一使用 InnoDB。
 
 ## ER 关系
 
@@ -22,8 +30,8 @@ erDiagram
   projects ||--o{ assets : owns
   projects ||--o{ frames : owns
   projects ||--o{ generation_tasks : owns
-  media_files ||--o{ assets : image
-  media_files ||--o{ frame_versions : image
+  media_files ||--o{ assets : image_url
+  media_files ||--o{ frame_versions : image_url
   frames ||--o{ frame_versions : has
   frames ||--o{ frame_references : uses
   assets ||--o{ frame_references : referenced_by
@@ -40,14 +48,14 @@ erDiagram
 
 ```sql
 create table projects (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  description text not null default '',
-  aspect_ratio text not null default '16:9',
-  status text not null default 'active',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+  id char(36) primary key,
+  name varchar(120) not null,
+  description text not null,
+  aspect_ratio varchar(20) not null default '16:9',
+  status varchar(20) not null default 'active',
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6)
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_projects_created_at on projects (created_at desc);
 ```
@@ -58,33 +66,38 @@ create index idx_projects_created_at on projects (created_at desc);
 
 ```sql
 create table project_scripts (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null unique references projects(id) on delete cascade,
-  content text not null default '',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+  id char(36) primary key,
+  project_id char(36) not null unique,
+  content text not null,
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6),
+  constraint fk_project_scripts_project
+    foreign key (project_id) references projects(id) on delete cascade
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 ```
 
 ### media_files
 
-统一保存上传图、资产图、帧图、后续视频文件。不要把 base64 存业务表里，业务表只挂文件引用。
+统一保存上传图、资产图、帧图、后续视频文件。文件本体放火山 TOS 桶，业务表只挂文件链接，不存 base64。
 
 ```sql
 create table media_files (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid references projects(id) on delete cascade,
-  file_type text not null check (file_type in ('image', 'video', 'audio', 'other')),
-  storage_key text not null,
+  id char(36) primary key,
+  project_id char(36),
+  file_type varchar(20) not null,
   url text not null,
-  mime_type text,
+  mime_type varchar(120),
   width int,
   height int,
   duration_ms int,
   size_bytes bigint,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
+  metadata json not null,
+  created_at datetime(6) not null default current_timestamp(6),
+  constraint chk_media_files_type
+    check (file_type in ('image', 'video', 'audio', 'other')),
+  constraint fk_media_files_project
+    foreign key (project_id) references projects(id) on delete cascade
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_media_files_project on media_files (project_id, created_at desc);
 ```
@@ -95,18 +108,24 @@ create index idx_media_files_project on media_files (project_id, created_at desc
 
 ```sql
 create table assets (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
-  type text not null check (type in ('role', 'scene', 'prop', 'other')),
-  name text not null,
-  description text not null default '',
-  default_prompt text not null default '',
-  tags text[] not null default '{}',
-  image_file_id uuid references media_files(id) on delete set null,
+  id char(36) primary key,
+  project_id char(36) not null,
+  type varchar(20) not null,
+  name varchar(120) not null,
+  description text not null,
+  default_prompt text not null,
+  tags json not null,
+  image_file_id char(36),
   sort_order int not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6),
+  constraint chk_assets_type
+    check (type in ('role', 'scene', 'prop', 'other')),
+  constraint fk_assets_project
+    foreign key (project_id) references projects(id) on delete cascade,
+  constraint fk_assets_image_file
+    foreign key (image_file_id) references media_files(id) on delete set null
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_assets_project_type on assets (project_id, type, sort_order, created_at desc);
 ```
@@ -117,22 +136,24 @@ create index idx_assets_project_type on assets (project_id, type, sort_order, cr
 
 ```sql
 create table frames (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
+  id char(36) primary key,
+  project_id char(36) not null,
   order_index int not null,
-  summary text not null default '',
+  summary text not null,
   duration_ms int not null default 3000,
-  people text not null default '',
-  dialogue text not null default '',
-  action text not null default '',
-  emotion text not null default '',
-  note text not null default '',
-  current_prompt text not null default '',
-  selected_version_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (project_id, order_index)
-);
+  people text not null,
+  dialogue text not null,
+  action text not null,
+  emotion text not null,
+  note text not null,
+  current_prompt text not null,
+  selected_version_id char(36),
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6),
+  unique key uq_frames_project_order (project_id, order_index),
+  constraint fk_frames_project
+    foreign key (project_id) references projects(id) on delete cascade
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_frames_project_order on frames (project_id, order_index);
 ```
@@ -143,18 +164,22 @@ create index idx_frames_project_order on frames (project_id, order_index);
 
 ```sql
 create table frame_versions (
-  id uuid primary key default gen_random_uuid(),
-  frame_id uuid not null references frames(id) on delete cascade,
+  id char(36) primary key,
+  frame_id char(36) not null,
   version_no int not null,
-  image_file_id uuid references media_files(id) on delete set null,
-  prompt text not null default '',
-  model_provider text not null default 'openai',
-  model_name text not null default 'gpt-image-2',
-  generation_task_id uuid,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  unique (frame_id, version_no)
-);
+  image_file_id char(36),
+  prompt text not null,
+  model_provider varchar(80) not null,
+  model_name varchar(120) not null,
+  generation_task_id char(36),
+  metadata json not null,
+  created_at datetime(6) not null default current_timestamp(6),
+  unique key uq_frame_versions_frame_version (frame_id, version_no),
+  constraint fk_frame_versions_frame
+    foreign key (frame_id) references frames(id) on delete cascade,
+  constraint fk_frame_versions_image_file
+    foreign key (image_file_id) references media_files(id) on delete set null
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_frame_versions_frame on frame_versions (frame_id, version_no);
 ```
@@ -175,20 +200,28 @@ alter table frames
 
 ```sql
 create table frame_references (
-  id uuid primary key default gen_random_uuid(),
-  frame_id uuid not null references frames(id) on delete cascade,
-  ref_type text not null check (ref_type in ('asset', 'frame')),
-  asset_id uuid references assets(id) on delete cascade,
-  ref_frame_id uuid references frames(id) on delete cascade,
-  role text not null default 'reference',
+  id char(36) primary key,
+  frame_id char(36) not null,
+  ref_type varchar(20) not null,
+  asset_id char(36),
+  ref_frame_id char(36),
+  role varchar(40) not null default 'reference',
   sort_order int not null default 0,
-  created_at timestamptz not null default now(),
-  check (
+  created_at datetime(6) not null default current_timestamp(6),
+  constraint chk_frame_references_type
+    check (ref_type in ('asset', 'frame')),
+  constraint chk_frame_references_target check (
     (ref_type = 'asset' and asset_id is not null and ref_frame_id is null)
     or
     (ref_type = 'frame' and ref_frame_id is not null and asset_id is null)
-  )
-);
+  ),
+  constraint fk_frame_references_frame
+    foreign key (frame_id) references frames(id) on delete cascade,
+  constraint fk_frame_references_asset
+    foreign key (asset_id) references assets(id) on delete cascade,
+  constraint fk_frame_references_ref_frame
+    foreign key (ref_frame_id) references frames(id) on delete cascade
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_frame_references_frame on frame_references (frame_id, sort_order);
 ```
@@ -197,11 +230,27 @@ create index idx_frame_references_frame on frame_references (frame_id, sort_orde
 
 统一任务表：文生图、图生图、图片编辑、帧图转视频、文生视频都进这里。
 
+`provider` 和 `model_name` 是后端创建任务时写入的审计字段。前端创建任务时只提交 `task_type`、目标对象、提示词和创作参数，不提交模型供应商或模型名。图片模型、视频模型的切换放在后端配置或管理接口里完成，避免普通创作界面出现模型切换。
+
 ```sql
 create table generation_tasks (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
-  task_type text not null check (
+  id char(36) primary key,
+  project_id char(36) not null,
+  task_type varchar(40) not null,
+  target_type varchar(40) not null,
+  target_id char(36),
+  provider varchar(80) not null,
+  model_name varchar(120) not null,
+  status varchar(20) not null default 'queued',
+  prompt text not null,
+  request_payload json not null,
+  response_payload json not null,
+  error_message text not null,
+  started_at datetime(6),
+  finished_at datetime(6),
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6),
+  constraint chk_generation_tasks_task_type check (
     task_type in (
       'text_to_image',
       'image_to_image',
@@ -210,22 +259,13 @@ create table generation_tasks (
       'frames_to_video'
     )
   ),
-  target_type text not null check (target_type in ('asset', 'frame', 'video_segment', 'project')),
-  target_id uuid,
-  provider text not null,
-  model_name text not null,
-  status text not null default 'queued' check (
-    status in ('queued', 'running', 'succeeded', 'failed', 'cancelled')
-  ),
-  prompt text not null default '',
-  request_payload jsonb not null default '{}'::jsonb,
-  response_payload jsonb not null default '{}'::jsonb,
-  error_message text not null default '',
-  started_at timestamptz,
-  finished_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+  constraint chk_generation_tasks_target_type
+    check (target_type in ('asset', 'frame', 'video_segment', 'project')),
+  constraint chk_generation_tasks_status
+    check (status in ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+  constraint fk_generation_tasks_project
+    foreign key (project_id) references projects(id) on delete cascade
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_generation_tasks_project on generation_tasks (project_id, created_at desc);
 create index idx_generation_tasks_status on generation_tasks (status, created_at);
@@ -245,27 +285,37 @@ alter table frame_versions
 
 ### video_segments
 
-后面做 Seedance 2 多帧参考图生视频时，用这个表表示两个关键帧之间的一段视频。
+后面做多帧参考图生视频时，用这个表表示两个关键帧之间的一段视频，实际视频模型由后端配置决定。
 
 ```sql
 create table video_segments (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
+  id char(36) primary key,
+  project_id char(36) not null,
   order_index int not null,
-  start_frame_id uuid not null references frames(id) on delete cascade,
-  end_frame_id uuid references frames(id) on delete set null,
+  start_frame_id char(36) not null,
+  end_frame_id char(36),
   duration_ms int not null default 3000,
-  prompt text not null default '',
-  video_file_id uuid references media_files(id) on delete set null,
-  generation_task_id uuid references generation_tasks(id) on delete set null,
-  status text not null default 'draft' check (
-    status in ('draft', 'queued', 'running', 'succeeded', 'failed')
-  ),
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (project_id, order_index)
-);
+  prompt text not null,
+  video_file_id char(36),
+  generation_task_id char(36),
+  status varchar(20) not null default 'draft',
+  metadata json not null,
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6),
+  unique key uq_video_segments_project_order (project_id, order_index),
+  constraint chk_video_segments_status
+    check (status in ('draft', 'queued', 'running', 'succeeded', 'failed')),
+  constraint fk_video_segments_project
+    foreign key (project_id) references projects(id) on delete cascade,
+  constraint fk_video_segments_start_frame
+    foreign key (start_frame_id) references frames(id) on delete cascade,
+  constraint fk_video_segments_end_frame
+    foreign key (end_frame_id) references frames(id) on delete set null,
+  constraint fk_video_segments_video_file
+    foreign key (video_file_id) references media_files(id) on delete set null,
+  constraint fk_video_segments_generation_task
+    foreign key (generation_task_id) references generation_tasks(id) on delete set null
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create index idx_video_segments_project_order on video_segments (project_id, order_index);
 ```
@@ -281,7 +331,7 @@ create index idx_video_segments_project_order on video_segments (project_id, ord
 | 帧详情 | 概要、人物、对白、动作、情绪、备注 | `frames` |
 | 底部输入舱 | 当前生成提示词、引用资产/帧 | `frames.current_prompt` + `frame_references` |
 | 图片生成结果 | v1/v2/v3 图片版本 | `frame_versions` |
-| 模型调用 | GPT Image / Seedance 2 请求与结果 | `generation_tasks` |
+| 模型调用 | 后端默认图片/视频模型的请求与结果 | `generation_tasks` |
 
 ## 先不要做的表
 
@@ -294,4 +344,4 @@ create index idx_video_segments_project_order on video_segments (project_id, ord
 
 1. 后端先实现 `projects`、`project_scripts`、`media_files`、`assets`、`frames`、`frame_versions`。
 2. 生成模型接入时再启用 `frame_references` 和 `generation_tasks`。
-3. Seedance 2 工作台开始做时，再启用 `video_segments`。
+3. 视频工作台开始做时，再启用 `video_segments`。

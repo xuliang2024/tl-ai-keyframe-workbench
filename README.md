@@ -1,4 +1,4 @@
-# TL AI Keyframe Workbench
+# FrameLab
 
 一个面向 AI 视频创作的关键帧图片生成工作台原型。
 
@@ -15,6 +15,7 @@
 - 帧详情记录：概要、时长、人物、对白、动作、情绪、备注
 - 类即梦的极简提示词输入舱
 - `@` 调用资产和项目帧
+- 图片/视频模型切换放在后端配置，前端创作界面不提供模型切换
 
 ## 使用方式
 
@@ -36,10 +37,22 @@ python3 -m http.server 4173
 http://localhost:4173/index.html
 ```
 
+后续工程化版本目录已经预留：
+
+```bash
+# 后端 FastAPI
+cd backend
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+# 前端 Electron + React
+cd desktop
+npm run dev
+```
+
 ## 后续方向
 
-- 接入 GPT Image 图片生成/编辑
-- 接入 Seedance 2 视频生成
+- 接入后端可配置的图片生成/编辑模型
+- 接入后端可配置的视频生成模型
 - 将关键帧按时长组装为帧转视频任务
 - 保存项目数据
 - 导出帧图和视频生成任务配置
@@ -47,6 +60,8 @@ http://localhost:4173/index.html
 ## 技术设计
 
 - [表结构设计](docs/schema-design.md)
+- [系统框架设计](docs/framework-design.md)
+- [云资源记录](docs/cloud-resources.md)
 
 ## License
 
