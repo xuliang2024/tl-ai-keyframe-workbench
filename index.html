@@ -1,0 +1,2150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>图片关键帧生成工作台</title>
+  <style>
+    :root {
+      --bg: #f3f5f7;
+      --panel: #fff;
+      --ink: #1b2430;
+      --muted: #7c8797;
+      --line: #e2e7ee;
+      --line-strong: #cfd7e2;
+      --blue: #2f7ddc;
+      --blue-dark: #1f5fae;
+      --green: #17a589;
+      --soft: #f6f8fb;
+      --shadow: 0 24px 70px rgba(30, 41, 59, .12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(148, 163, 184, .12) 1px, transparent 1px) 0 0 / 40px 40px,
+        linear-gradient(180deg, #fbfcfd 0%, var(--bg) 48%, #edf1f5 100%);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+    }
+
+    button, textarea, select { font: inherit; }
+
+    button {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--ink);
+      padding: 0 14px;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: #c9d0db; background: #fafbfc; }
+
+    textarea {
+      width: 100%;
+      border: 0;
+      outline: none;
+      background: transparent;
+      resize: none;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1.45;
+      min-height: 58px;
+      padding: 0;
+    }
+
+    textarea::placeholder { color: #9aa5b3; }
+
+    select {
+      min-height: 36px;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      height: 58px;
+      background: rgba(255, 255, 255, .88);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(12px);
+    }
+
+    .brand strong { display: block; font-size: 16px; letter-spacing: .2px; }
+    .brand span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+
+    .top-actions { display: flex; gap: 8px; align-items: center; }
+
+    .nav-tabs {
+      display: flex;
+      gap: 6px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(246, 248, 251, .9);
+    }
+
+    .nav-tab {
+      border: 0;
+      min-height: 34px;
+      border-radius: 10px;
+      color: var(--muted);
+      background: transparent;
+      font-weight: 850;
+    }
+
+    .nav-tab.active {
+      color: var(--blue-dark);
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(30, 41, 59, .08);
+    }
+
+    .workspace {
+      height: calc(100vh - 58px);
+      display: grid;
+      grid-template-rows: minmax(260px, 1fr) auto;
+      gap: 12px;
+      padding: 16px;
+      min-height: 0;
+    }
+
+    .page-hidden {
+      display: none !important;
+    }
+
+    .asset-page {
+      height: calc(100vh - 58px);
+      padding: 16px;
+      display: block;
+      min-height: 0;
+    }
+
+    .script-page {
+      height: calc(100vh - 58px);
+      padding: 16px;
+      display: block;
+      min-height: 0;
+    }
+
+    .project-page {
+      height: calc(100vh - 58px);
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 340px minmax(420px, 1fr);
+      gap: 14px;
+      min-height: 0;
+    }
+
+    .project-list,
+    .project-settings {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: 0 18px 50px rgba(30, 41, 59, .08);
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .project-list-body {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      overflow: auto;
+      max-height: calc(100vh - 140px);
+    }
+
+    .project-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .project-card.active,
+    .project-card:hover {
+      border-color: #b9d2f3;
+      box-shadow: 0 12px 28px rgba(30, 41, 59, .08);
+    }
+
+    .project-card strong,
+    .project-card small {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .project-card small {
+      color: var(--muted);
+    }
+
+    .project-settings-body {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .project-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .script-editor {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: 0 18px 50px rgba(30, 41, 59, .08);
+      overflow: hidden;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .script-body {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      height: calc(100% - 56px);
+      min-height: 0;
+    }
+
+    .script-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .script-field label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .script-title-input {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      min-height: 44px;
+      padding: 0 12px;
+      font-size: 16px;
+      font-weight: 850;
+    }
+
+    .script-text {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      padding: 14px;
+      min-height: 420px;
+      height: 100%;
+      resize: none;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+
+    .asset-main,
+    .asset-editor {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: 0 18px 50px rgba(30, 41, 59, .08);
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .asset-panel-head {
+      min-height: 56px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: linear-gradient(180deg, #fff, #f9fbfd);
+    }
+
+    .asset-panel-head h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .asset-panel-head span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .asset-list {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      overflow: auto;
+      max-height: calc(100vh - 140px);
+    }
+
+    .asset-filter {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .asset-filter button {
+      min-height: 30px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 0 10px;
+    }
+
+    .asset-filter button.active {
+      color: var(--blue-dark);
+      border-color: #b9d2f3;
+      background: #edf5ff;
+    }
+
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 12px;
+    }
+
+    .asset-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fff, #fbfcfd);
+      padding: 10px;
+      display: grid;
+      gap: 9px;
+      cursor: pointer;
+    }
+
+    .asset-card.active,
+    .asset-card:hover {
+      border-color: #b9d2f3;
+      box-shadow: 0 12px 28px rgba(30, 41, 59, .1);
+    }
+
+    .asset-thumb {
+      min-height: 120px;
+      border-radius: 13px;
+      background: linear-gradient(135deg, var(--c1), var(--c2), var(--c3));
+      background-size: cover;
+      background-position: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .asset-thumb.has-image:before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 45%, rgba(15, 23, 42, .5));
+    }
+
+    .asset-thumb:after {
+      content: attr(data-label);
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      right: 10px;
+      color: #fff;
+      font-weight: 900;
+      text-shadow: 0 1px 14px rgba(0, 0, 0, .48);
+    }
+
+    .asset-card strong,
+    .asset-card small {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .asset-card small {
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .asset-editor {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .editor-body {
+      padding: 14px;
+      overflow: auto;
+      display: grid;
+      grid-template-columns: 280px minmax(360px, 1fr);
+      gap: 14px;
+    }
+
+    .editor-preview {
+      border-radius: 18px;
+      background: #111827;
+      padding: 14px;
+      min-height: 320px;
+      display: grid;
+      gap: 12px;
+      place-items: center;
+    }
+
+    .editor-art {
+      width: 100%;
+      aspect-ratio: 4 / 5;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--c1), var(--c2), var(--c3));
+      background-size: cover;
+      background-position: center;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 900;
+      text-align: center;
+      text-shadow: 0 1px 16px rgba(0, 0, 0, .48);
+    }
+
+    .editor-art.has-image {
+      align-items: end;
+      justify-items: start;
+      padding: 14px;
+    }
+
+    .upload-empty {
+      border: 1px dashed #b9d2f3;
+      border-radius: 14px;
+      width: 100%;
+      min-height: 116px;
+      background: #f7fbff;
+      color: var(--blue-dark);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .editor-form {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .editor-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .editor-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .editor-field label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .editor-field input,
+    .editor-field select,
+    .editor-field textarea {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      min-height: 38px;
+      padding: 9px 10px;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .editor-field textarea {
+      min-height: 86px;
+    }
+
+    .timeline {
+      background: rgba(255, 255, 255, .92);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 18px 50px rgba(30, 41, 59, .08);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .timeline-head {
+      min-height: 54px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, #f9fbfd);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .timeline-head h1 { margin: 0; font-size: 16px; }
+    .timeline-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+    .timeline-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .rail-wrap { overflow: auto; padding: 18px; }
+
+    .rail {
+      min-width: 900px;
+      display: flex;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .frame-card {
+      width: 190px;
+      flex: 0 0 190px;
+      min-height: 252px;
+      border: 1px solid #dfe5ee;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #ffffff, #fafbfd);
+      padding: 10px;
+      cursor: pointer;
+      display: grid;
+      grid-template-rows: auto 108px auto;
+      gap: 10px;
+    }
+
+    .frame-card.active {
+      border-color: var(--blue);
+      background: #fff;
+      box-shadow: 0 0 0 4px rgba(47, 125, 220, .12), 0 16px 34px rgba(30, 41, 59, .1);
+    }
+
+    .frame-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .frame-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .frame-no {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #eaf2ff, #f5f9ff);
+      color: var(--blue-dark);
+      font-weight: 900;
+    }
+
+    .frame-state {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .frame-duration {
+      min-width: 42px;
+      border: 1px solid #dbeafe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: var(--blue-dark);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 6px 8px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .delete-frame {
+      width: 24px;
+      height: 24px;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      color: #9aa5b3;
+      font-size: 15px;
+      line-height: 1;
+      opacity: .72;
+    }
+
+    .delete-frame:hover {
+      color: #dc2626;
+      border-color: #fecaca;
+      background: #fff1f2;
+      opacity: 1;
+    }
+
+    .thumb {
+      border: 1px solid rgba(20, 32, 45, .1);
+      border-radius: 13px;
+      min-height: 108px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 10px;
+      color: var(--muted);
+      font-weight: 800;
+      line-height: 1.45;
+      background:
+        linear-gradient(90deg, rgba(148, 163, 184, .18) 1px, transparent 1px) 0 0 / 24px 24px,
+        #f3f6f9;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .thumb.generated {
+      color: #fff;
+      background: linear-gradient(135deg, var(--c1), var(--c2) 54%, var(--c3));
+      text-shadow: 0 1px 12px rgba(0, 0, 0, .42);
+    }
+
+    .thumb.generated:before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(0deg, rgba(20, 28, 36, .42), transparent 64%);
+    }
+
+    .thumb span { position: relative; z-index: 1; }
+
+    .frame-title { display: grid; gap: 6px; min-height: 64px; }
+
+    .frame-desc {
+      min-height: 42px;
+      color: #4b5563;
+      font-size: 12px;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .detail-toggle {
+      width: max-content;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      color: var(--blue-dark);
+      background: #edf5ff;
+      border-color: #d7e6f8;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .detail-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(15, 23, 42, .42);
+      backdrop-filter: blur(8px);
+      display: grid;
+      place-items: center;
+      padding: 28px;
+    }
+
+    .detail-modal {
+      width: min(1120px, 96vw);
+      max-height: min(760px, 92vh);
+      border: 1px solid rgba(226, 232, 240, .9);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, .98);
+      box-shadow: 0 30px 90px rgba(15, 23, 42, .28);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .detail-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 62px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, #f9fbfd);
+    }
+
+    .detail-head strong {
+      font-size: 16px;
+    }
+
+    .detail-body {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.05fr);
+      gap: 18px;
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .detail-preview {
+      border-radius: 18px;
+      background: #111827;
+      min-height: 420px;
+      padding: 18px;
+      display: grid;
+      place-items: center;
+    }
+
+    .detail-art {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--c1), var(--c2) 52%, var(--c3));
+      box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      text-align: center;
+      padding: 22px;
+      font-weight: 900;
+      text-shadow: 0 1px 16px rgba(0, 0, 0, .46);
+    }
+
+    .detail-art:before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(0deg, rgba(15, 23, 42, .38), transparent 62%);
+    }
+
+    .detail-art span {
+      position: relative;
+      z-index: 1;
+    }
+
+    .detail-form {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .detail-field {
+      border: 1px solid #dbe7f5;
+      border-radius: 10px;
+      background: #f7fbff;
+      padding: 8px;
+      color: #334155;
+      font-size: 12px;
+      line-height: 1.42;
+      display: grid;
+      gap: 5px;
+      min-height: 92px;
+    }
+
+    .detail-field label {
+      color: var(--muted);
+      font-weight: 850;
+    }
+
+    .detail-value {
+      min-height: 48px;
+      color: #334155;
+    }
+
+    .detail-prompt {
+      border: 1px solid #dbe7f5;
+      border-radius: 10px;
+      background: #fbfdff;
+      padding: 10px;
+      color: #334155;
+      font-size: 12px;
+      line-height: 1.5;
+      min-height: 130px;
+    }
+
+    .detail-editor {
+      border: 1px solid #cfe0f4;
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+      color: #1f2937;
+      font-size: 13px;
+      line-height: 1.55;
+      min-height: 150px;
+      white-space: pre-wrap;
+    }
+
+    .detail-editor:empty:before {
+      content: "写这一帧的概要描述，例如：这一帧发生了什么、画面重点是什么、和前后帧是什么关系...";
+      color: #9aa5b3;
+    }
+
+    .detail-value[contenteditable="true"]:focus {
+      outline: 2px solid rgba(47, 125, 220, .18);
+      border-color: #b9d2f3;
+      background: #fff;
+      border-radius: 6px;
+    }
+
+    .detail-editor:focus {
+      outline: 2px solid rgba(47, 125, 220, .18);
+      border-color: #b9d2f3;
+    }
+
+    .version-strip {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      min-height: 22px;
+      overflow: hidden;
+    }
+
+    .version-btn {
+      min-height: 20px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      padding: 0 7px;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .version-btn.active {
+      color: var(--blue-dark);
+      border-color: #bde7f5;
+      background: #eefaff;
+    }
+
+    .version-step {
+      width: 22px;
+      height: 22px;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .insert-slot {
+      width: 44px;
+      flex: 0 0 44px;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 8px;
+      padding-top: 52px;
+      color: #a2adbb;
+    }
+
+    .insert-line {
+      width: 1px;
+      height: 92px;
+      background: #d8dee8;
+    }
+
+    .insert-btn {
+      width: 30px;
+      height: 30px;
+      min-height: 30px;
+      border-radius: 999px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      color: #a2adbb;
+      font-weight: 900;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(34, 42, 53, .08);
+    }
+
+    .insert-btn:hover {
+      color: var(--blue-dark);
+      border-color: #bde7f5;
+      background: #eefaff;
+    }
+
+    .jimeng-box {
+      background: rgba(255, 255, 255, .96);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 16px 18px 14px;
+      display: grid;
+      gap: 10px;
+      position: relative;
+    }
+
+    .input-row {
+      display: grid;
+      min-height: 74px;
+    }
+
+    .prompt-area {
+      min-width: 0;
+      position: relative;
+      padding-top: 22px;
+    }
+
+    .selected-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      min-height: 18px;
+      color: var(--muted);
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 12px;
+      overflow: hidden;
+    }
+
+    .selected-line b { color: var(--ink); }
+
+    .pill-small {
+      display: inline-flex;
+      align-items: center;
+      min-height: 18px;
+      border-radius: 999px;
+      background: #edf5ff;
+      color: var(--blue-dark);
+      padding: 0 6px;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .tool-left, .tool-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tool {
+      min-height: 36px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #fbfcfd);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      font-weight: 850;
+    }
+
+    .tool:hover {
+      border-color: #b9cfea;
+      color: var(--blue-dark);
+      background: #f5f9ff;
+    }
+
+    .tool.blue { color: var(--blue); }
+
+    .icon {
+      width: 20px;
+      height: 20px;
+      display: inline-grid;
+      place-items: center;
+      color: currentColor;
+      font-weight: 900;
+    }
+
+    .count {
+      color: #68758a;
+      font-size: 18px;
+      font-weight: 900;
+      padding: 0 4px;
+    }
+
+    .send {
+      width: 46px;
+      height: 46px;
+      border: 0;
+      border-radius: 999px;
+      background: #e0e2e6;
+      color: #fff;
+      font-size: 28px;
+      line-height: 1;
+      display: grid;
+      place-items: center;
+      padding: 0 0 5px;
+    }
+
+    .send.ready {
+      background: linear-gradient(135deg, var(--blue), var(--green));
+      box-shadow: 0 12px 28px rgba(47, 125, 220, .24);
+    }
+
+    .asset-popover {
+      position: absolute;
+      left: 30px;
+      right: 30px;
+      bottom: 88px;
+      background: rgba(255, 255, 255, .98);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 22px 58px rgba(34, 42, 53, .16);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    .asset-row {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      align-items: start;
+      gap: 10px;
+    }
+
+    .asset-row.hidden-row {
+      display: none;
+    }
+
+    .asset-row label {
+      color: var(--muted);
+      font-weight: 900;
+      padding-top: 8px;
+    }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .frame-pick-list {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .frame-pick {
+      width: 112px;
+      flex: 0 0 112px;
+      min-height: 92px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .frame-pick.active {
+      border-color: #b9d2f3;
+      background: #edf5ff;
+      color: var(--blue-dark);
+    }
+
+    .frame-pick-thumb {
+      min-height: 42px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--c1), var(--c2), var(--c3));
+    }
+
+    .frame-pick strong,
+    .frame-pick small {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .frame-pick small { color: var(--muted); }
+
+    .edit-library {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(92px, 1fr));
+      gap: 10px;
+    }
+
+    .edit-asset {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 8px;
+      display: grid;
+      gap: 7px;
+      cursor: pointer;
+      min-width: 0;
+    }
+
+    .edit-asset.active {
+      border-color: #b9d2f3;
+      background: #edf5ff;
+      color: var(--blue-dark);
+    }
+
+    .edit-thumb {
+      min-height: 58px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, var(--c1), var(--c2), var(--c3));
+    }
+
+    .edit-asset strong,
+    .edit-asset small {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .edit-asset small { color: var(--muted); }
+
+    .chip {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: linear-gradient(180deg, #fff, #fbfcfd);
+      color: #68758a;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      font-weight: 820;
+      cursor: pointer;
+    }
+
+    .chip.active {
+      color: var(--blue-dark);
+      border-color: #bde7f5;
+      background: #eefaff;
+    }
+
+    .chip.upload-chip {
+      border-style: dashed;
+      color: #7a8594;
+      background: #fbfcfd;
+    }
+
+    .hidden { display: none; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      transform: translateX(-50%) translateY(18px);
+      opacity: 0;
+      pointer-events: none;
+      background: #111827;
+      color: #fff;
+      border-radius: 10px;
+      padding: 11px 14px;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, .24);
+      transition: opacity .18s ease, transform .18s ease;
+      z-index: 50;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 880px) {
+      .topbar { height: auto; padding: 12px; align-items: stretch; flex-direction: column; }
+      .workspace { height: auto; min-height: calc(100vh - 58px); }
+      textarea { font-size: 19px; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .tool-right { justify-content: space-between; }
+      .asset-popover { left: 12px; right: 12px; bottom: 104px; }
+      .detail-overlay { padding: 12px; }
+      .detail-body { grid-template-columns: 1fr; }
+      .detail-preview { min-height: 260px; }
+      .project-page { height: auto; grid-template-columns: 1fr; }
+      .script-page { height: auto; grid-template-columns: 1fr; }
+      .asset-page { height: auto; grid-template-columns: 1fr; }
+      .editor-body { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <strong>图片关键帧生成工作台</strong>
+        <span>参考即梦：一个输入舱，生成到当前帧。</span>
+      </div>
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-page="project">项目</button>
+        <button class="nav-tab" data-page="script">剧本</button>
+        <button class="nav-tab" data-page="assets">资产库</button>
+        <button class="nav-tab" data-page="workbench">关键帧</button>
+      </nav>
+      <div class="top-actions">
+        <button id="saveProject">保存项目</button>
+        <button id="exportFrames">导出帧图</button>
+      </div>
+    </header>
+
+    <main class="project-page" id="projectPage">
+      <aside class="project-list">
+        <div class="asset-panel-head">
+          <div>
+            <h2>项目列表</h2>
+            <span>管理不同视频项目</span>
+          </div>
+          <button id="newProject">新建</button>
+        </div>
+        <div class="project-list-body" id="projectListBody"></div>
+      </aside>
+
+      <section class="project-settings">
+        <div class="asset-panel-head">
+          <div>
+            <h2>项目设置</h2>
+            <span>项目名称、描述和宽高比</span>
+          </div>
+          <button id="saveProjectSettings">保存设置</button>
+        </div>
+        <div class="project-settings-body">
+          <div class="editor-field">
+            <label>项目名字</label>
+            <input id="projectNameInput">
+          </div>
+          <div class="editor-field">
+            <label>项目描述</label>
+            <textarea id="projectDescInput"></textarea>
+          </div>
+          <div class="editor-field">
+            <label>图片宽高比</label>
+            <select id="projectRatioInput">
+              <option>16:9</option>
+              <option>9:16</option>
+              <option>1:1</option>
+              <option>21:9</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <main class="script-page page-hidden" id="scriptPage">
+      <section class="script-editor">
+        <div class="asset-panel-head">
+          <div>
+            <h2>项目剧本</h2>
+            <span>只编辑剧本文本</span>
+          </div>
+          <button id="saveScript">保存剧本</button>
+        </div>
+        <div class="script-body">
+          <div class="script-field">
+            <label for="scriptTextInput">剧本内容</label>
+            <textarea class="script-text" id="scriptTextInput" placeholder="在这里写这个视频项目的剧本内容。可以包含故事梗概、分场、对白、人物行动和镜头意图。"></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <main class="workspace page-hidden" id="workbenchPage">
+      <section class="timeline">
+        <div class="timeline-head">
+          <div>
+            <h1>图片帧时间轴</h1>
+            <p>点选帧格，下面的大输入舱会把结果生成到这一帧。</p>
+          </div>
+          <div class="timeline-actions">
+            <button id="fillDemo">填入示例</button>
+          </div>
+        </div>
+        <div class="rail-wrap">
+          <div class="rail" id="frameRail"></div>
+        </div>
+      </section>
+
+      <section class="jimeng-box">
+        <div class="asset-popover hidden" id="assetPopover">
+          <div class="asset-row" data-row="role">
+            <label>角色</label>
+            <div class="chips" data-group="role">
+              <span class="chip" data-text="短发女主，米色风衣，脸部保持一致">女主</span>
+              <span class="chip" data-text="神秘男人，黑色长大衣，撑黑伞">男人</span>
+              <span class="chip" data-text="无人物，只保留环境">无人物</span>
+            </div>
+          </div>
+          <div class="asset-row" data-row="scene">
+            <label>场景</label>
+            <div class="chips" data-group="scene">
+              <span class="chip" data-text="雨夜街道，霓虹灯，湿润地面反光">雨夜街道</span>
+              <span class="chip" data-text="黑色轿车旁，车灯穿过雨幕">黑车旁</span>
+              <span class="chip" data-text="室内窗边，冷色月光">窗边</span>
+            </div>
+          </div>
+          <div class="asset-row" data-row="prop">
+            <label>道具</label>
+            <div class="chips" data-group="prop">
+              <span class="chip" data-text="手持黑伞">黑伞</span>
+              <span class="chip" data-text="手机屏幕发出微光">手机</span>
+              <span class="chip" data-text="红色围巾在风中飘动">围巾</span>
+            </div>
+          </div>
+          <div class="asset-row hidden-row" data-row="projectFrames">
+            <label>帧</label>
+            <div class="frame-pick-list" id="projectFrameList"></div>
+          </div>
+          <div class="asset-row hidden-row" data-row="shot">
+            <label>镜头</label>
+            <div class="chips" data-group="shot">
+              <span class="chip" data-text="平视镜头">平视</span>
+              <span class="chip" data-text="低角度镜头">低角度</span>
+              <span class="chip" data-text="俯拍镜头">俯拍</span>
+              <span class="chip" data-text="远景，展示人物和环境关系">远景</span>
+              <span class="chip" data-text="大远景，突出环境和空间感">大远景</span>
+              <span class="chip" data-text="中景，人物动作清楚">中景</span>
+              <span class="chip" data-text="近景，突出表情">近景</span>
+              <span class="chip" data-text="特写，突出面部或道具细节">特写</span>
+            </div>
+          </div>
+          <div class="asset-row hidden-row" data-row="movement">
+            <label>运动</label>
+            <div class="chips" data-group="movement">
+              <span class="chip" data-text="镜头轻微推进">推进</span>
+              <span class="chip" data-text="镜头轻微拉远">拉远</span>
+              <span class="chip" data-text="横向构图，适合后续跟拍">横移</span>
+              <span class="chip" data-text="固定机位，画面稳定">固定</span>
+            </div>
+          </div>
+          <div class="asset-row hidden-row" data-row="other">
+            <label>其他</label>
+            <div class="chips" data-group="other">
+              <span class="chip" data-text="参考上传的构图图，保持画面布局">构图图</span>
+              <span class="chip" data-text="参考光影样张，保持光线氛围">光影</span>
+              <span class="chip" data-text="参考色彩样张，保持整体色调">色彩</span>
+              <span class="chip upload-chip" id="createAssetShortcut" data-text="">+ 新建资产</span>
+            </div>
+          </div>
+          <div class="asset-row hidden-row" data-row="style">
+            <label>风格</label>
+            <div class="chips" data-group="style">
+              <span class="chip active" data-text="电影写实，浅景深，高级光影">电影写实</span>
+              <span class="chip" data-text="广告质感，干净构图，明亮色彩">广告感</span>
+              <span class="chip" data-text="纪录片质感，自然光，真实颗粒">纪录片</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-row">
+          <div class="prompt-area">
+            <textarea id="prompt" placeholder="输入文字，描述你想生成的图片。需要参考图时，从下方素材库选择。"></textarea>
+            <div class="selected-line" id="selectedLine">
+              <b id="selectedFrameText">第 1 帧</b>
+              <span>输入描述，或从素材库选择参考素材。</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="detailContainer"></div>
+
+        <div class="toolbar">
+          <div class="tool-left">
+            <button class="tool" id="mentionTool">@</button>
+            <button class="tool asset-trigger" data-panel="role">角色</button>
+            <button class="tool asset-trigger" data-panel="scene">场景</button>
+            <button class="tool asset-trigger" data-panel="prop">道具</button>
+            <button class="tool asset-trigger" data-panel="shot">镜头</button>
+            <button class="tool asset-trigger" data-panel="movement">运动</button>
+            <button class="tool asset-trigger" data-panel="projectFrames">项目帧</button>
+            <button class="tool asset-trigger" data-panel="other">其他</button>
+            <button class="tool" id="magicPrompt">T↝</button>
+          </div>
+          <div class="tool-right">
+            <span class="count" id="countText">0 / 张</span>
+            <button class="send" id="generate" title="生成到当前帧">↑</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <main class="asset-page page-hidden" id="assetPage">
+      <section class="asset-main" id="assetListView">
+        <div class="asset-panel-head">
+          <div>
+            <h2>项目资产库</h2>
+            <span>角色、场景、道具和其他参考素材</span>
+          </div>
+          <div class="top-actions">
+            <div class="asset-filter" id="assetFilter"></div>
+            <button id="newAsset">新建资产</button>
+          </div>
+        </div>
+        <div class="asset-list">
+          <div class="asset-grid" id="assetGrid"></div>
+        </div>
+      </section>
+
+      <section class="asset-editor page-hidden" id="assetEditorView">
+        <div class="asset-panel-head">
+          <div>
+            <h2 id="assetEditorTitle">编辑资产</h2>
+            <span>维护可复用参考图和描述</span>
+          </div>
+          <div class="top-actions">
+            <button id="backAssetList">返回列表</button>
+            <button id="saveAsset">保存资产</button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <div class="editor-preview">
+            <div class="editor-art" id="assetEditorArt">资产预览</div>
+            <button id="replaceAssetImage">替换图片</button>
+          </div>
+          <div class="editor-form">
+            <div class="editor-row">
+              <div class="editor-field">
+                <label>资产名称</label>
+                <input id="assetNameInput">
+              </div>
+              <div class="editor-field">
+                <label>资产类型</label>
+                <select id="assetTypeInput">
+                  <option>角色</option>
+                  <option>场景</option>
+                  <option>道具</option>
+                  <option>其他</option>
+                </select>
+              </div>
+            </div>
+            <div class="editor-field">
+              <label>资产描述</label>
+              <textarea id="assetDescInput"></textarea>
+            </div>
+            <div class="editor-field">
+              <label>默认提示词</label>
+              <textarea id="assetPromptInput"></textarea>
+            </div>
+            <div class="editor-field">
+              <label>标签</label>
+              <input id="assetTagsInput">
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <input id="assetImageInput" type="file" accept="image/*" hidden>
+
+  <script>
+    const state = {
+      selected: 0,
+      detailFrame: null,
+      selectedFrameRefs: [],
+      activePage: "project",
+      selectedProject: 0,
+      projects: [
+        { name: "雨夜追车", desc: "雨夜街头悬疑短片，围绕女主、黑色轿车和神秘男人展开。", ratio: "16:9" },
+        { name: "窗边独白", desc: "室内情绪短片，人物在窗边完成一段内心转折。", ratio: "9:16" }
+      ],
+      scriptText: "女主站在雨夜街道，远处黑色轿车亮起车灯。她听见身后刹车声，紧张地回头看向镜头。车门打开，一个神秘男人撑着黑伞从车旁出现。",
+      assetFilter: "全部",
+      selectedAsset: 0,
+      frames: [
+        { prompt: "", story: { duration: "3 秒", people: "", dialogue: "", action: "", emotion: "" }, versions: [], currentVersion: 0 },
+        { prompt: "", story: { duration: "3 秒", people: "", dialogue: "", action: "", emotion: "" }, versions: [], currentVersion: 0 },
+        { prompt: "", story: { duration: "3 秒", people: "", dialogue: "", action: "", emotion: "" }, versions: [], currentVersion: 0 }
+      ],
+      assets: [
+        { name: "女主 A", type: "角色", desc: "短发，米色风衣，雨夜故事主角", prompt: "短发女主，米色风衣，脸部保持一致", tags: "主角,锁脸,风衣", colors: ["#bfdbfe", "#fde68a", "#fecaca"] },
+        { name: "神秘男人", type: "角色", desc: "黑色长大衣，撑黑伞，压迫感", prompt: "神秘男人，黑色长大衣，撑黑伞", tags: "配角,黑伞,悬疑", colors: ["#cbd5e1", "#93c5fd", "#d8b4fe"] },
+        { name: "雨夜街道", type: "场景", desc: "霓虹灯、湿润地面、雨水反光", prompt: "雨夜街道，霓虹灯，湿润地面反光", tags: "主场景,夜景,雨", colors: ["#93c5fd", "#a7f3d0", "#fde68a"] },
+        { name: "黑色轿车", type: "道具", desc: "车灯穿过雨幕，推动剧情", prompt: "黑色轿车旁，车灯穿过雨幕", tags: "车辆,车灯,剧情道具", colors: ["#94a3b8", "#fca5a5", "#bfdbfe"] },
+        { name: "构图参考", type: "其他", desc: "人物居中，车灯作为背景压力", prompt: "参考构图图，人物居中，背景有纵深", tags: "构图,参考", colors: ["#bbf7d0", "#fde68a", "#bfdbfe"] }
+      ]
+    };
+
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+    function toast(text) {
+      const el = $("#toast");
+      el.textContent = text;
+      el.classList.add("show");
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => el.classList.remove("show"), 1500);
+    }
+
+    function frameStyle(frame) {
+      const version = currentVersion(frame);
+      const colors = version ? version.colors : ["#bfdbfe", "#fde68a", "#fecaca"];
+      return `--c1:${colors[0]};--c2:${colors[1]};--c3:${colors[2]}`;
+    }
+
+    function currentVersion(frame) {
+      return frame.versions[frame.currentVersion] || null;
+    }
+
+    function isGenerated(frame) {
+      return Boolean(currentVersion(frame));
+    }
+
+    function createStory(prompt = "") {
+      return {
+        summary: "",
+        duration: "3 秒",
+        people: "",
+        dialogue: "",
+        action: prompt,
+        emotion: "",
+        note: ""
+      };
+    }
+
+    function storyField(value, fallback = "未记录") {
+      return value && value.trim() ? value.trim() : fallback;
+    }
+
+    function frameDuration(frame) {
+      return storyField(frame.story && frame.story.duration, "3 秒");
+    }
+
+    function assetStyle(asset) {
+      return `--c1:${asset.colors[0]};--c2:${asset.colors[1]};--c3:${asset.colors[2]}`;
+    }
+
+    function assetVisualStyle(asset) {
+      if (asset.image) {
+        return `${assetStyle(asset)};background-image:url('${asset.image}')`;
+      }
+      return assetStyle(asset);
+    }
+
+    function switchPage(page) {
+      state.activePage = page;
+      $("#projectPage").classList.toggle("page-hidden", page !== "project");
+      $("#scriptPage").classList.toggle("page-hidden", page !== "script");
+      $("#workbenchPage").classList.toggle("page-hidden", page !== "workbench");
+      $("#assetPage").classList.toggle("page-hidden", page !== "assets");
+      $$(".nav-tab").forEach(tab => tab.classList.toggle("active", tab.dataset.page === page));
+      if (page === "assets") {
+        renderAssets();
+      }
+    }
+
+    function renderProjects() {
+      $("#projectListBody").innerHTML = state.projects.map((project, index) => `
+        <article class="project-card ${index === state.selectedProject ? "active" : ""}" data-project-index="${index}">
+          <strong>${project.name}</strong>
+          <small>${project.ratio}</small>
+          <small>${project.desc}</small>
+        </article>
+      `).join("");
+      $$(".project-card").forEach(card => {
+        card.addEventListener("click", () => {
+          state.selectedProject = Number(card.dataset.projectIndex);
+          renderProjects();
+        });
+      });
+      const project = state.projects[state.selectedProject];
+      $("#projectNameInput").value = project.name;
+      $("#projectDescInput").value = project.desc;
+      $("#projectRatioInput").value = project.ratio;
+    }
+
+    function saveProjectSettings() {
+      const project = state.projects[state.selectedProject];
+      project.name = $("#projectNameInput").value;
+      project.desc = $("#projectDescInput").value;
+      project.ratio = $("#projectRatioInput").value;
+      renderProjects();
+      toast("项目设置已保存");
+    }
+
+    function renderScript() {
+      $("#scriptTextInput").value = state.scriptText;
+    }
+
+    function renderAssets() {
+      const types = ["全部", "角色", "场景", "道具", "其他"];
+      $("#assetFilter").innerHTML = types.map(type => `<button class="${state.assetFilter === type ? "active" : ""}" data-asset-filter="${type}">${type}</button>`).join("");
+      $$("#assetFilter button").forEach(button => {
+        button.addEventListener("click", () => {
+          state.assetFilter = button.dataset.assetFilter;
+          renderAssets();
+        });
+      });
+
+      const assets = state.assets
+        .map((asset, index) => ({ asset, index }))
+        .filter(item => state.assetFilter === "全部" || item.asset.type === state.assetFilter);
+      $("#assetGrid").innerHTML = assets.map(({ asset, index }) => `
+        <article class="asset-card ${state.selectedAsset === index ? "active" : ""}" data-asset-index="${index}">
+          <div class="asset-thumb ${asset.image ? "has-image" : ""}" data-label="${asset.name}" style="${assetVisualStyle(asset)}"></div>
+          <strong>${asset.name}</strong>
+          <small>${asset.type} · ${asset.desc}</small>
+          <span class="pill-small">${asset.tags.split(",")[0]}</span>
+        </article>
+      `).join("");
+      $$(".asset-card").forEach(card => {
+        card.addEventListener("click", () => openAssetEditor(Number(card.dataset.assetIndex)));
+      });
+    }
+
+    function openAssetEditor(index) {
+      state.selectedAsset = index;
+      const asset = state.assets[index];
+      $("#assetListView").classList.add("page-hidden");
+      $("#assetEditorView").classList.remove("page-hidden");
+      $("#assetEditorTitle").textContent = `编辑资产：${asset.name}`;
+      $("#assetEditorArt").style.cssText = assetVisualStyle(asset);
+      $("#assetEditorArt").classList.toggle("has-image", Boolean(asset.image));
+      $("#assetEditorArt").textContent = asset.name;
+      $("#assetNameInput").value = asset.name;
+      $("#assetTypeInput").value = asset.type;
+      $("#assetDescInput").value = asset.desc;
+      $("#assetPromptInput").value = asset.prompt;
+      $("#assetTagsInput").value = asset.tags;
+    }
+
+    function closeAssetEditor() {
+      $("#assetEditorView").classList.add("page-hidden");
+      $("#assetListView").classList.remove("page-hidden");
+      renderAssets();
+    }
+
+    function saveAssetEditor() {
+      const asset = state.assets[state.selectedAsset];
+      asset.name = $("#assetNameInput").value;
+      asset.type = $("#assetTypeInput").value;
+      asset.desc = $("#assetDescInput").value;
+      asset.prompt = $("#assetPromptInput").value;
+      asset.tags = $("#assetTagsInput").value;
+      toast("资产已保存");
+      closeAssetEditor();
+    }
+
+    function createAsset() {
+      const type = state.assetFilter === "全部" ? "角色" : state.assetFilter;
+      state.assets.unshift({
+        name: "未命名资产",
+        type,
+        desc: "补充这个资产的外观、用途和关键特征",
+        prompt: "",
+        tags: "新资产",
+        colors: ["#bfdbfe", "#fde68a", "#fecaca"]
+      });
+      state.selectedAsset = 0;
+      state.assetFilter = "全部";
+      renderAssets();
+      openAssetEditor(0);
+      toast("已新建资产");
+    }
+
+    function openAssetUpload() {
+      $("#assetImageInput").value = "";
+      $("#assetImageInput").click();
+    }
+
+    function handleAssetImage(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = reader.result;
+        if (state.assets[state.selectedAsset]) {
+          state.assets[state.selectedAsset].image = image;
+          openAssetEditor(state.selectedAsset);
+          toast("资产图片已替换");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function renderDetailPanel() {
+      const index = state.detailFrame;
+      if (index === null || index === undefined) return "";
+      const frame = state.frames[index];
+      if (!frame) return "";
+      const version = currentVersion(frame);
+      const story = frame.story || createStory(version ? version.prompt : "");
+      const artText = version ? version.note : "还没有生成图片";
+      return `
+        <div class="detail-overlay" id="detailOverlay">
+          <section class="detail-modal" id="detailPanel">
+            <div class="detail-head">
+              <strong>第 ${index + 1} 帧详情</strong>
+              <button id="closeDetail">关闭</button>
+            </div>
+            <div class="detail-body">
+              <div class="detail-preview">
+                <div class="detail-art" style="${frameStyle(frame)}"><span>${artText}</span></div>
+              </div>
+              <div class="detail-form">
+                <div class="detail-field">
+                  <label>概要描述</label>
+                  <div class="detail-editor" contenteditable="true" data-detail-summary="true">${story.summary || story.action || ""}</div>
+                </div>
+                <div class="detail-grid">
+                  <div class="detail-field"><label>时长</label><div class="detail-value" contenteditable="true" data-detail-field="duration">${storyField(story.duration, "3 秒")}</div></div>
+                  <div class="detail-field"><label>人物</label><div class="detail-value" contenteditable="true" data-detail-field="people">${storyField(story.people)}</div></div>
+                  <div class="detail-field"><label>对白</label><div class="detail-value" contenteditable="true" data-detail-field="dialogue">${storyField(story.dialogue, "无对白")}</div></div>
+                  <div class="detail-field"><label>动作</label><div class="detail-value" contenteditable="true" data-detail-field="action">${storyField(story.action, version ? version.prompt : "未记录")}</div></div>
+                  <div class="detail-field"><label>情绪</label><div class="detail-value" contenteditable="true" data-detail-field="emotion">${storyField(story.emotion)}</div></div>
+                  <div class="detail-field"><label>备注</label><div class="detail-value" contenteditable="true" data-detail-field="note">${storyField(story.note, "无")}</div></div>
+                </div>
+                <div class="detail-prompt"><b>生成提示词记录</b><br>${version ? version.prompt : frame.prompt || "未生成"}</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function renderDetailContainer() {
+      $("#detailContainer").innerHTML = renderDetailPanel();
+      const close = $("#closeDetail");
+      if (close) {
+        close.addEventListener("click", () => {
+          state.detailFrame = null;
+          renderDetailContainer();
+          renderFrames();
+        });
+      }
+      const overlay = $("#detailOverlay");
+      if (overlay) {
+        overlay.addEventListener("click", event => {
+          if (event.target === overlay) {
+            state.detailFrame = null;
+            renderDetailContainer();
+            renderFrames();
+          }
+        });
+      }
+      $$(".detail-value").forEach(value => {
+        value.addEventListener("input", () => {
+          const frame = state.frames[state.detailFrame];
+          if (!frame.story || typeof frame.story === "string") {
+            frame.story = createStory(currentVersion(frame)?.prompt || "");
+          }
+          frame.story[value.dataset.detailField] = value.textContent.trim();
+        });
+      });
+      const editor = $(".detail-editor");
+      if (editor) {
+        editor.addEventListener("input", () => {
+          const frame = state.frames[state.detailFrame];
+          if (!frame.story || typeof frame.story === "string") {
+            frame.story = createStory(currentVersion(frame)?.prompt || "");
+          }
+          frame.story.summary = editor.textContent.trim();
+        });
+      }
+    }
+
+    function selectedChips() {
+      const chipTexts = $$(".chip.active").map(chip => chip.dataset.text);
+      const frameTexts = state.selectedFrameRefs.map(index => {
+        const frame = state.frames[index];
+        const version = currentVersion(frame);
+        return `参考项目第 ${index + 1} 帧：${version ? version.note : "空白帧"}`;
+      });
+      return [...chipTexts, ...frameTexts];
+    }
+
+    function renderSelectedLine() {
+      const tags = selectedChips().map(text => `<span class="pill-small">${text.split("，")[0]}</span>`).join("");
+      $("#selectedLine").innerHTML = `<b id="selectedFrameText">第 ${state.selected + 1} 帧</b>${tags || "<span>可快速选择角色、场景、道具、镜头、运动，也可以输入 @ 调资产。</span>"}`;
+      $("#countText").textContent = `${state.frames.filter(isGenerated).length} / 张`;
+      $("#generate").classList.toggle("ready", Boolean($("#prompt").value.trim() || selectedChips().length));
+    }
+
+    function showMentionPicker() {
+      const popover = $("#assetPopover");
+      popover.dataset.activePanel = "mention";
+      popover.classList.remove("hidden");
+      $$(".asset-row").forEach(row => {
+        row.classList.toggle("hidden-row", !["role", "scene", "prop", "shot", "movement", "projectFrames", "other"].includes(row.dataset.row));
+      });
+    }
+
+    function showAssetPanel(panel) {
+      const popover = $("#assetPopover");
+      const alreadyOpen = !popover.classList.contains("hidden") && popover.dataset.activePanel === panel;
+      popover.dataset.activePanel = panel;
+      popover.classList.toggle("hidden", alreadyOpen);
+      $$(".asset-row").forEach(row => row.classList.toggle("hidden-row", row.dataset.row !== panel));
+    }
+
+    function insertMention(label) {
+      const textarea = $("#prompt");
+      let value = textarea.value;
+      const cursor = textarea.selectionStart ?? value.length;
+      const before = value.slice(0, cursor);
+      const after = value.slice(cursor);
+      const atIndex = before.lastIndexOf("@");
+      const prefix = atIndex >= 0 ? before.slice(0, atIndex) : before;
+      const spacer = prefix && !/\s$/.test(prefix) ? " " : "";
+      const mention = `${spacer}@${label} `;
+      textarea.value = `${prefix}${mention}${after}`;
+      state.frames[state.selected].prompt = textarea.value;
+      textarea.focus();
+      const nextCursor = `${prefix}${mention}`.length;
+      textarea.setSelectionRange(nextCursor, nextCursor);
+      $("#assetPopover").classList.add("hidden");
+      renderSelectedLine();
+    }
+
+    function renderProjectFrameList() {
+      $("#projectFrameList").innerHTML = state.frames.map((frame, index) => {
+        const active = state.selectedFrameRefs.includes(index) ? "active" : "";
+        const version = currentVersion(frame);
+        const note = version ? version.note : "空白帧";
+        return `
+          <div class="frame-pick ${active}" data-frame-ref="${index}">
+            <div class="frame-pick-thumb" style="${frameStyle(frame)}"></div>
+            <strong>第 ${index + 1} 帧</strong>
+            <small>${note}</small>
+          </div>
+        `;
+      }).join("");
+
+      $$(".frame-pick").forEach(item => {
+        item.addEventListener("click", () => {
+          const index = Number(item.dataset.frameRef);
+          if ($("#assetPopover").dataset.activePanel === "mention") {
+            insertMention(`第${index + 1}帧`);
+            return;
+          }
+          if (state.selectedFrameRefs.includes(index)) {
+            state.selectedFrameRefs = state.selectedFrameRefs.filter(value => value !== index);
+          } else {
+            state.selectedFrameRefs.push(index);
+          }
+          renderProjectFrameList();
+          renderSelectedLine();
+        });
+      });
+    }
+
+    function renderFrames() {
+      $("#frameRail").innerHTML = state.frames.map((frame, index) => {
+        const active = index === state.selected ? "active" : "";
+        const version = currentVersion(frame);
+        const generated = Boolean(version);
+        const thumbClass = generated ? "thumb generated" : "thumb";
+        const text = generated ? version.note : "点我，然后在下方生成";
+        const desc = generated ? version.prompt : "还没有画面描述。选中这一帧后，在下方输入框写这一帧要发生什么。";
+        const versions = frame.versions.length ? `
+          <div class="version-strip">
+            <button class="version-step" data-version-prev="${index}">‹</button>
+            ${frame.versions.map((item, versionIndex) => `
+              <button class="version-btn ${versionIndex === frame.currentVersion ? "active" : ""}" data-frame-version="${index}:${versionIndex}">v${versionIndex + 1}</button>
+            `).join("")}
+            <button class="version-step" data-version-next="${index}">›</button>
+          </div>
+        ` : `<div class="version-strip"><span class="frame-state">暂无版本</span></div>`;
+        const insert = `
+          <div class="insert-slot">
+            <button class="insert-btn" data-insert-after="${index}" title="在这里插入一帧">+</button>
+            <div class="insert-line"></div>
+          </div>
+        `;
+        return `
+          <article class="frame-card ${active}" data-index="${index}">
+            <div class="frame-top">
+              <span class="frame-no">${index + 1}</span>
+              <div class="frame-meta">
+                <span class="frame-duration">${frameDuration(frame)}</span>
+                <span class="frame-state">${generated ? `v${frame.currentVersion + 1}/${frame.versions.length}` : "空"}</span>
+                <button class="delete-frame" data-delete-frame="${index}" title="删除这一帧">×</button>
+              </div>
+            </div>
+            <div class="${thumbClass}" style="${frameStyle(frame)}"><span>${text}</span></div>
+            <div class="frame-title">
+              <div class="frame-desc">${desc}</div>
+              <button class="detail-toggle" data-detail-toggle="${index}">${state.detailFrame === index ? "收起详情" : "详情"}</button>
+              ${versions}
+            </div>
+          </article>${insert}
+        `;
+      }).join("");
+
+      $$(".frame-card").forEach(card => {
+        card.addEventListener("click", () => selectFrame(Number(card.dataset.index)));
+      });
+      $$(".insert-btn").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          insertFrameAfter(Number(button.dataset.insertAfter));
+        });
+      });
+      $$(".delete-frame").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          deleteFrame(Number(button.dataset.deleteFrame));
+        });
+      });
+      $$(".detail-toggle").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          const index = Number(button.dataset.detailToggle);
+          state.detailFrame = state.detailFrame === index ? null : index;
+          state.selected = index;
+          renderFrames();
+          renderDetailContainer();
+        });
+      });
+      $$(".version-btn").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          const [frameIndex, versionIndex] = button.dataset.frameVersion.split(":").map(Number);
+          state.frames[frameIndex].currentVersion = versionIndex;
+          selectFrame(frameIndex);
+          toast(`已切到第 ${frameIndex + 1} 帧 v${versionIndex + 1}`);
+        });
+      });
+      $$("[data-version-prev]").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          const frameIndex = Number(button.dataset.versionPrev);
+          const frame = state.frames[frameIndex];
+          if (!frame.versions.length) return;
+          frame.currentVersion = (frame.currentVersion - 1 + frame.versions.length) % frame.versions.length;
+          selectFrame(frameIndex);
+        });
+      });
+      $$("[data-version-next]").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          const frameIndex = Number(button.dataset.versionNext);
+          const frame = state.frames[frameIndex];
+          if (!frame.versions.length) return;
+          frame.currentVersion = (frame.currentVersion + 1) % frame.versions.length;
+          selectFrame(frameIndex);
+        });
+      });
+      renderProjectFrameList();
+      renderSelectedLine();
+    }
+
+    function selectFrame(index) {
+      state.selected = index;
+      const frame = state.frames[index];
+      const version = currentVersion(frame);
+      $("#prompt").value = frame.prompt || (version ? version.prompt : "");
+      renderFrames();
+      renderDetailContainer();
+    }
+
+    function buildPrompt() {
+      return [$("#prompt").value.trim(), ...selectedChips()].filter(Boolean).join("，");
+    }
+
+    function generate(regen = false) {
+      const prompt = buildPrompt();
+      if (!prompt) {
+        toast("先输入文字，或从素材库选参考");
+        return;
+      }
+      const frame = state.frames[state.selected];
+      frame.prompt = prompt;
+      if (!frame.story || typeof frame.story === "string") {
+        frame.story = createStory(prompt);
+      } else if (!frame.story.action) {
+        frame.story.action = prompt;
+      } else if (!frame.story.summary) {
+        frame.story.summary = prompt;
+      }
+      const palettes = [
+        ["#bfdbfe", "#fde68a", "#fecaca"],
+        ["#a7f3d0", "#bfdbfe", "#fbcfe8"],
+        ["#c7d2fe", "#bbf7d0", "#fed7aa"],
+        ["#fde68a", "#bae6fd", "#d8b4fe"],
+        ["#fecaca", "#bbf7d0", "#bfdbfe"]
+      ];
+      const version = {
+        prompt,
+        note: prompt.length > 18 ? `${prompt.slice(0, 18)}...` : prompt,
+        colors: palettes[(state.selected + frame.versions.length + (regen ? 1 : 0)) % palettes.length]
+      };
+      frame.versions.push(version);
+      frame.currentVersion = frame.versions.length - 1;
+      renderFrames();
+      renderDetailContainer();
+      toast(frame.versions.length > 1 ? `已新增 v${frame.versions.length}` : "已生成到当前帧");
+    }
+
+    function createEmptyFrame() {
+      return {
+        prompt: "",
+        story: createStory(),
+        versions: [],
+        currentVersion: 0
+      };
+    }
+
+    function insertFrameAfter(index) {
+      state.frames.splice(index + 1, 0, createEmptyFrame());
+      state.selectedFrameRefs = state.selectedFrameRefs.map(ref => ref > index ? ref + 1 : ref);
+      if (state.detailFrame !== null && state.detailFrame > index) state.detailFrame += 1;
+      selectFrame(index + 1);
+      toast(`已在第 ${index + 1} 帧后插入新帧`);
+    }
+
+    function deleteFrame(index) {
+      if (state.frames.length <= 1) {
+        toast("至少保留一帧");
+        return;
+      }
+      state.frames.splice(index, 1);
+      state.selectedFrameRefs = state.selectedFrameRefs
+        .filter(ref => ref !== index)
+        .map(ref => ref > index ? ref - 1 : ref);
+      if (state.detailFrame === index) {
+        state.detailFrame = null;
+      } else if (state.detailFrame !== null && state.detailFrame > index) {
+        state.detailFrame -= 1;
+      }
+      const nextIndex = Math.min(index, state.frames.length - 1);
+      selectFrame(nextIndex);
+      toast(`已删除第 ${index + 1} 帧`);
+    }
+
+    function fillDemo() {
+      const demo = [
+        "女主站在雨夜街道，远处黑色轿车亮起车灯。",
+        "女主听到刹车声，紧张地回头看向镜头。",
+        "神秘男人撑黑伞从车门后出现。"
+      ];
+      const demoStories = [
+        { summary: "女主独自站在雨夜街道中央，远处黑色轿车亮起车灯。", duration: "3 秒", people: "女主", dialogue: "无对白", action: "站在雨夜街道，远处黑色轿车亮起车灯。", emotion: "警觉、紧张", note: "画面重点是雨水反光、车灯压迫感和女主的孤立感。" },
+        { summary: "女主听到身后刹车声后迅速回头，进入紧张反应。", duration: "2 秒", people: "女主", dialogue: "无对白", action: "听到刹车声，回头看向镜头。", emotion: "惊讶、戒备", note: "需要表现动作瞬间和紧张情绪。" },
+        { summary: "神秘男人从黑色轿车旁出现，撑着黑伞制造压迫感。", duration: "4 秒", people: "神秘男人", dialogue: "无对白", action: "撑黑伞从车门后出现。", emotion: "冷静、压迫感", note: "脸部可以半遮挡，画面要有悬疑感。" }
+      ];
+      state.frames = state.frames.slice(0, 3).map((frame, index) => ({
+        ...frame,
+        prompt: demo[index],
+        story: demoStories[index],
+        currentVersion: 0,
+        versions: [{
+          prompt: demo[index],
+          note: `${demo[index].slice(0, 18)}...`,
+          colors: [
+            ["#bfdbfe", "#fde68a", "#fecaca"],
+            ["#a7f3d0", "#bfdbfe", "#fbcfe8"],
+            ["#c7d2fe", "#bbf7d0", "#fed7aa"]
+          ][index]
+        }]
+      }));
+      selectFrame(0);
+      state.detailFrame = null;
+      renderDetailContainer();
+      toast("已填入示例帧");
+    }
+
+    function bind() {
+      $$(".nav-tab").forEach(tab => {
+        tab.addEventListener("click", () => switchPage(tab.dataset.page));
+      });
+      $("#saveProjectSettings").addEventListener("click", saveProjectSettings);
+      $("#newProject").addEventListener("click", () => {
+        state.projects.push({ name: "未命名项目", desc: "项目描述", ratio: "16:9" });
+        state.selectedProject = state.projects.length - 1;
+        renderProjects();
+        toast("已新建项目");
+      });
+      $("#scriptTextInput").addEventListener("input", () => {
+        state.scriptText = $("#scriptTextInput").value;
+      });
+      $("#saveScript").addEventListener("click", () => toast("剧本已保存"));
+      $("#backAssetList").addEventListener("click", closeAssetEditor);
+      $("#saveAsset").addEventListener("click", saveAssetEditor);
+      $("#newAsset").addEventListener("click", createAsset);
+      $("#replaceAssetImage").addEventListener("click", openAssetUpload);
+      $("#assetImageInput").addEventListener("change", event => handleAssetImage(event.target.files[0]));
+      $("#prompt").addEventListener("input", () => {
+        state.frames[state.selected].prompt = $("#prompt").value;
+        if ($("#prompt").value.includes("@")) {
+          showMentionPicker();
+        }
+        renderSelectedLine();
+      });
+      $("#generate").addEventListener("click", () => generate(false));
+      $("#fillDemo").addEventListener("click", fillDemo);
+      $("#saveProject").addEventListener("click", () => toast("项目已保存"));
+      $("#exportFrames").addEventListener("click", () => toast("这里接导出帧图"));
+      $("#mentionTool").addEventListener("click", () => {
+        const textarea = $("#prompt");
+        textarea.focus();
+        if (!textarea.value.endsWith("@")) {
+          textarea.value = `${textarea.value}${textarea.value && !textarea.value.endsWith(" ") ? " " : ""}@`;
+          state.frames[state.selected].prompt = textarea.value;
+        }
+        showMentionPicker();
+      });
+      $$(".asset-trigger").forEach(button => {
+        button.addEventListener("click", () => showAssetPanel(button.dataset.panel));
+      });
+      $("#magicPrompt").addEventListener("click", () => {
+        const text = $("#prompt").value.trim() || "主体清晰，动作明确，适合作为视频关键帧";
+        $("#prompt").value = `${text}，构图干净，光影自然，画面稳定`;
+        state.frames[state.selected].prompt = $("#prompt").value;
+        renderSelectedLine();
+        toast("已润色提示词");
+      });
+      $("#createAssetShortcut").addEventListener("click", () => {
+        switchPage("assets");
+        createAsset();
+      });
+      $$(".chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          if (chip.id === "createAssetShortcut") return;
+          const group = chip.closest(".chips");
+          if ($("#assetPopover").dataset.activePanel === "mention") {
+            insertMention(chip.textContent.trim());
+            return;
+          }
+          if (group.dataset.group !== "prop") {
+            group.querySelectorAll(".chip").forEach(item => {
+              if (item !== chip) item.classList.remove("active");
+            });
+          }
+          chip.classList.toggle("active");
+          renderSelectedLine();
+        });
+      });
+    }
+
+    bind();
+    renderProjects();
+    renderScript();
+    renderFrames();
+    renderAssets();
+  </script>
+</body>
+</html>
