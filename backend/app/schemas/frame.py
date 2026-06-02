@@ -38,6 +38,7 @@ class FrameVersionRead(BaseModel):
 
     id: str
     frame_id: str
+    owner_user_id: str | None = None
     version_no: int
     image_file_id: str | None
     image_url: str | None = None
@@ -53,6 +54,7 @@ class FrameRead(BaseModel):
 
     id: str
     project_id: str
+    owner_user_id: str | None = None
     order_index: int
     summary: str
     duration_ms: int

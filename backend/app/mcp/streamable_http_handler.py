@@ -8,7 +8,10 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from app.core.security import hash_token
 from app.mcp.tools import MCP_TOOL_SCHEMAS, get_tool
+from app.services.database_store import store
+from app.services.memory_store import UserRecord
 
 router = APIRouter(prefix="/mcp-http", tags=["mcp"])
 
@@ -19,8 +22,10 @@ _SESSION_TTL = timedelta(hours=1)
 @router.post("")
 async def mcp_streamable_post(
     request: Request,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     mcp_session_id: str | None = Header(default=None, alias="Mcp-Session-Id"),
 ) -> Response:
+    user = await _authenticate_mcp_user(authorization)
     try:
         body = await request.json()
     except Exception as exc:
@@ -37,7 +42,7 @@ async def mcp_streamable_post(
 
     responses = []
     for message in messages:
-        result = await _process_message(message, session_id)
+        result = await _process_message(message, session_id, user)
         if result is not None:
             responses.append(result)
 
@@ -52,8 +57,10 @@ async def mcp_streamable_post(
 
 @router.get("")
 async def mcp_streamable_get(
+    authorization: str | None = Header(default=None, alias="Authorization"),
     mcp_session_id: str | None = Header(default=None, alias="Mcp-Session-Id"),
 ) -> JSONResponse:
+    await _authenticate_mcp_user(authorization)
     if not mcp_session_id or not _touch_session(mcp_session_id):
         raise HTTPException(status_code=404, detail="MCP session expired or not found")
     return JSONResponse({"status": "ok", "session_id": mcp_session_id})
@@ -61,14 +68,20 @@ async def mcp_streamable_get(
 
 @router.delete("")
 async def mcp_streamable_delete(
+    authorization: str | None = Header(default=None, alias="Authorization"),
     mcp_session_id: str | None = Header(default=None, alias="Mcp-Session-Id"),
 ) -> Response:
+    await _authenticate_mcp_user(authorization)
     if mcp_session_id:
         _sessions.pop(mcp_session_id, None)
     return Response(status_code=204)
 
 
-async def _process_message(message: dict[str, Any], session_id: str) -> dict[str, Any] | None:
+async def _process_message(
+    message: dict[str, Any],
+    session_id: str,
+    user: UserRecord,
+) -> dict[str, Any] | None:
     request_id = message.get("id")
     method = message.get("method")
     params = message.get("params") or {}
@@ -108,7 +121,10 @@ async def _process_message(message: dict[str, Any], session_id: str) -> dict[str
         if not tool_name:
             return _error_payload(request_id, -32602, "Missing tool name")
         try:
-            result = await get_tool(tool_name)(arguments, context={"session_id": session_id})
+            result = await get_tool(tool_name)(
+                arguments,
+                context={"session_id": session_id, "user_id": user.id},
+            )
         except Exception as exc:
             return _error_payload(request_id, -32603, str(exc))
         return {
@@ -125,6 +141,23 @@ async def _process_message(message: dict[str, Any], session_id: str) -> dict[str
         }
 
     return _error_payload(request_id, -32601, f"Unknown method: {method}")
+
+
+async def _authenticate_mcp_user(authorization: str | None) -> UserRecord:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="MCP Bearer token is required")
+
+    token = authorization.split(" ", 1)[1].strip()
+    mcp_token = await store.get_user_mcp_token_by_hash(hash_token(token))
+    if not mcp_token:
+        raise HTTPException(status_code=401, detail="Invalid or revoked MCP token")
+
+    user = await store.get_user(mcp_token.user_id)
+    if not user or user.status != "active":
+        raise HTTPException(status_code=401, detail="Invalid or inactive user")
+
+    await store.touch_user_mcp_token(mcp_token.id)
+    return user
 
 
 def _create_session() -> str:

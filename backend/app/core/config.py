@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     database_url: str = "mysql+asyncmy://user:pass@127.0.0.1:3306/keyframe_workbench?charset=utf8mb4"
     redis_url: str = "redis://localhost:6379/0"
+    auth_secret_key: str = "change-me-in-production"
+    auth_access_token_expires_minutes: int = 525600
+    auth_refresh_token_expires_days: int = 3650
 
     storage_provider: str = "local"
     storage_bucket: str = "tl-keyframe"
@@ -49,6 +52,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     seedance_api_key: str = ""
     ark_api_key: str = ""
+    llm_api_key: str = ""
+    llm_base_url: str = "https://codex.apiz.ai/v1"
+    llm_model: str = "GPT-5.5"
+    llm_timeout_seconds: float = 120
     volcengine_ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     volcengine_image_model: str = "doubao-seedream-5-0-260128"
     apiz_api_key: str = ""

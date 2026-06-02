@@ -185,6 +185,13 @@ POST   /api/v1/projects/{project_id}/assets
 PATCH  /api/v1/assets/{asset_id}
 DELETE /api/v1/assets/{asset_id}
 
+GET    /api/v1/public-assets
+GET    /api/v1/public-assets/{public_asset_id}
+GET    /api/v1/public-assets/{public_asset_id}/images
+POST   /api/v1/public-assets/{public_asset_id}/images
+DELETE /api/v1/public-assets/images/{image_id}
+POST   /api/v1/projects/{project_id}/assets/import-public
+
 GET    /api/v1/projects/{project_id}/frames
 POST   /api/v1/projects/{project_id}/frames
 PATCH  /api/v1/frames/{frame_id}

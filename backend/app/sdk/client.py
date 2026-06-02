@@ -18,10 +18,12 @@ class FrameLabClient:
         self,
         base_url: str = "http://127.0.0.1:8000/api/v1",
         *,
+        access_token: str | None = None,
         timeout: float = 60.0,
         client: httpx.Client | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.access_token = access_token
         self._client = client or httpx.Client(timeout=timeout)
         self._owns_client = client is None
 
@@ -37,6 +39,48 @@ class FrameLabClient:
 
     def health(self) -> dict[str, Any]:
         return self._get("/health")
+
+    def set_access_token(self, access_token: str | None) -> None:
+        self.access_token = access_token
+
+    def register(
+        self,
+        *,
+        email: str,
+        username: str,
+        password: str,
+        display_name: str = "",
+    ) -> dict[str, Any]:
+        return self._post(
+            "/auth/register",
+            {
+                "email": email,
+                "username": username,
+                "password": password,
+                "display_name": display_name,
+            },
+        )
+
+    def login(self, *, login: str, password: str) -> dict[str, Any]:
+        return self._post("/auth/login", {"login": login, "password": password})
+
+    def refresh_token(self, refresh_token: str) -> dict[str, Any]:
+        return self._post("/auth/refresh", {"refresh_token": refresh_token})
+
+    def logout(self, refresh_token: str) -> dict[str, Any]:
+        return self._post("/auth/logout", {"refresh_token": refresh_token})
+
+    def me(self) -> dict[str, Any]:
+        return self._get("/auth/me")
+
+    def create_mcp_token(self, *, name: str = "MCP token") -> dict[str, Any]:
+        return self._post("/auth/mcp-tokens", {"name": name})
+
+    def list_mcp_tokens(self) -> list[dict[str, Any]]:
+        return self._get("/auth/mcp-tokens")
+
+    def revoke_mcp_token(self, token_id: str) -> None:
+        self._delete(f"/auth/mcp-tokens/{token_id}")
 
     def list_projects(self) -> list[dict[str, Any]]:
         return self._get("/projects")["items"]
@@ -223,6 +267,30 @@ class FrameLabClient:
     def get_generation_task(self, task_id: str) -> dict[str, Any]:
         return self._get(f"/generation-tasks/{task_id}")
 
+    def list_generation_tasks(
+        self,
+        *,
+        status: str | None = None,
+        task_type: str | None = None,
+        project_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        return self._get(
+            "/generation-tasks",
+            params=_drop_none(
+                {
+                    "status": status,
+                    "task_type": task_type,
+                    "project_id": project_id,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "limit": limit,
+                }
+            ),
+        )
+
     def retry_generation_task(self, task_id: str) -> dict[str, Any]:
         return self._post(f"/generation-tasks/{task_id}/retry", {})
 
@@ -245,8 +313,8 @@ class FrameLabClient:
                 raise FrameLabClientError(f"Timed out waiting for generation task {task_id}")
             time.sleep(interval_seconds)
 
-    def _get(self, path: str) -> Any:
-        return self._request("GET", path)
+    def _get(self, path: str, **kwargs: Any) -> Any:
+        return self._request("GET", path, **kwargs)
 
     def _post(self, path: str, payload: dict[str, Any]) -> Any:
         return self._request("POST", path, json=payload)
@@ -261,6 +329,11 @@ class FrameLabClient:
         return self._request("DELETE", path)
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        headers = dict(kwargs.pop("headers", {}) or {})
+        if self.access_token:
+            headers.setdefault("Authorization", f"Bearer {self.access_token}")
+        if headers:
+            kwargs["headers"] = headers
         response = self._client.request(method, f"{self.base_url}{path}", **kwargs)
         if response.status_code >= 400:
             raise FrameLabClientError(_error_message(response))

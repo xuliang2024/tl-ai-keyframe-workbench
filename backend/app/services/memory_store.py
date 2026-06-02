@@ -11,6 +11,7 @@ def utc_now() -> str:
 
 class ProjectRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
+    owner_user_id: str | None = None
     name: str
     description: str = ""
     aspect_ratio: str = "16:9"
@@ -25,6 +26,7 @@ class ProjectRecord(BaseModel):
 
 class ScriptRecord(BaseModel):
     project_id: str
+    owner_user_id: str | None = None
     content: str = ""
     updated_at: str = Field(default_factory=utc_now)
 
@@ -32,6 +34,7 @@ class ScriptRecord(BaseModel):
 class FrameRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     project_id: str
+    owner_user_id: str | None = None
     order_index: int
     summary: str = ""
     duration_ms: int = 3000
@@ -50,6 +53,7 @@ class FrameRecord(BaseModel):
 class FrameVersionRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     frame_id: str
+    owner_user_id: str | None = None
     version_no: int
     image_file_id: str | None = None
     image_url: str | None = None
@@ -63,6 +67,7 @@ class FrameVersionRecord(BaseModel):
 class AssetRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     project_id: str
+    owner_user_id: str | None = None
     type: str = "other"
     name: str
     description: str = ""
@@ -74,9 +79,47 @@ class AssetRecord(BaseModel):
     updated_at: str = Field(default_factory=utc_now)
 
 
+class PublicAssetRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    type: str = "other"
+    name: str
+    description: str = ""
+    default_prompt: str = ""
+    tags: list[str] = Field(default_factory=list)
+    image_file_id: str | None = None
+    sort_order: int = 0
+    status: str = "active"
+    created_at: str = Field(default_factory=utc_now)
+    updated_at: str = Field(default_factory=utc_now)
+
+
+class PublicAssetImageRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    public_asset_id: str
+    media_file_id: str
+    image_url: str | None = None
+    role: str = "reference"
+    title: str = ""
+    description: str = ""
+    prompt: str = ""
+    scene_prompt: str = ""
+    angle: str = ""
+    tags: list[str] = Field(default_factory=list)
+    is_primary: bool = False
+    sort_order: int = 0
+    source_type: str = "uploaded"
+    generation_task_id: str | None = None
+    generation_prompt: str = ""
+    created_by_user_id: str | None = None
+    created_by_name: str | None = None
+    created_at: str = Field(default_factory=utc_now)
+    updated_at: str = Field(default_factory=utc_now)
+
+
 class MediaFileRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     project_id: str | None = None
+    owner_user_id: str | None = None
     file_type: str
     bucket: str
     object_key: str
@@ -94,6 +137,7 @@ class MediaFileRecord(BaseModel):
 
 class GenerationTaskRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
+    owner_user_id: str | None = None
     status: str = "queued"
     task_type: str
     provider: str = "volcengine_ark"
@@ -102,12 +146,48 @@ class GenerationTaskRecord(BaseModel):
     aspect_ratio: str
     size: str
     request_payload: dict[str, Any] = Field(default_factory=dict)
+    target_type: str | None = None
+    target_id: str | None = None
+    target_payload: dict[str, Any] = Field(default_factory=dict)
+    reference_payload: list[dict[str, Any]] = Field(default_factory=list)
     images: list[dict[str, Any]] = Field(default_factory=list)
     usage: dict[str, Any] | None = None
     response_payload: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None
     created_at: str = Field(default_factory=utc_now)
     updated_at: str = Field(default_factory=utc_now)
+
+
+class UserRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    email: str
+    username: str
+    password_hash: str
+    display_name: str = ""
+    avatar_url: str | None = None
+    status: str = "active"
+    created_at: str = Field(default_factory=utc_now)
+    updated_at: str = Field(default_factory=utc_now)
+    last_login_at: str | None = None
+
+
+class UserSessionRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    user_id: str
+    refresh_token_hash: str
+    expires_at: str
+    revoked_at: str | None = None
+    created_at: str = Field(default_factory=utc_now)
+
+
+class UserMcpTokenRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    user_id: str
+    name: str
+    token_hash: str
+    last_used_at: str | None = None
+    revoked_at: str | None = None
+    created_at: str = Field(default_factory=utc_now)
 
 
 class MemoryStore:
@@ -122,6 +202,9 @@ class MemoryStore:
         self.assets: dict[str, AssetRecord] = {}
         self.media_files: dict[str, MediaFileRecord] = {}
         self.generation_tasks: dict[str, GenerationTaskRecord] = {}
+        self.users: dict[str, UserRecord] = {}
+        self.user_sessions: dict[str, UserSessionRecord] = {}
+        self.user_mcp_tokens: dict[str, UserMcpTokenRecord] = {}
 
     def create_project(
         self,
@@ -440,8 +523,14 @@ class MemoryStore:
         aspect_ratio: str,
         size: str,
         request_payload: dict[str, Any],
+        owner_user_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        target_payload: dict[str, Any] | None = None,
+        reference_payload: list[dict[str, Any]] | None = None,
     ) -> GenerationTaskRecord:
         task = GenerationTaskRecord(
+            owner_user_id=owner_user_id,
             provider=provider,
             task_type=task_type,
             model_name=model_name,
@@ -449,12 +538,45 @@ class MemoryStore:
             aspect_ratio=aspect_ratio,
             size=size,
             request_payload=request_payload,
+            target_type=target_type,
+            target_id=target_id,
+            target_payload=target_payload or {},
+            reference_payload=reference_payload or [],
         )
         self.generation_tasks[task.id] = task
         return task
 
-    def get_generation_task(self, task_id: str) -> GenerationTaskRecord | None:
-        return self.generation_tasks.get(task_id)
+    def get_generation_task(self, task_id: str, owner_user_id: str | None = None) -> GenerationTaskRecord | None:
+        task = self.generation_tasks.get(task_id)
+        if owner_user_id and task and task.owner_user_id != owner_user_id:
+            return None
+        return task
+
+    def list_generation_tasks(
+        self,
+        *,
+        owner_user_id: str | None = None,
+        status: str | None = None,
+        task_type: str | None = None,
+        project_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        limit: int = 50,
+    ) -> list[GenerationTaskRecord]:
+        tasks = list(self.generation_tasks.values())
+        if owner_user_id:
+            tasks = [task for task in tasks if task.owner_user_id == owner_user_id]
+        if status:
+            tasks = [task for task in tasks if task.status == status]
+        if task_type:
+            tasks = [task for task in tasks if task.task_type == task_type]
+        if project_id:
+            tasks = [task for task in tasks if task.request_payload.get("project_id") == project_id]
+        if target_type:
+            tasks = [task for task in tasks if task.target_type == target_type]
+        if target_id:
+            tasks = [task for task in tasks if task.target_id == target_id]
+        return sorted(tasks, key=lambda task: task.created_at, reverse=True)[:limit]
 
     def update_generation_task(
         self,

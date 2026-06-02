@@ -130,6 +130,83 @@ create table assets (
 create index idx_assets_project_type on assets (project_id, type, sort_order, created_at desc);
 ```
 
+### public_assets
+
+公共资产库：保存可跨项目复用的角色、场景、道具、怪物、载具等资产模板。公共资产不属于任何项目，导入项目时必须复制成项目自己的 `assets` 和 `media_files` 记录。
+
+`image_file_id` 只表示公共资产的主图，用于列表封面和默认引用图。一个公共资产可以通过 `public_asset_images` 拥有多张图集图片，例如角色正面、侧面、背面、表情、动作姿势、不同场景测试图。
+
+```sql
+create table public_assets (
+  id char(36) primary key,
+  type varchar(20) not null,
+  name varchar(120) not null,
+  description text not null,
+  default_prompt text not null,
+  tags json not null,
+  image_file_id char(36),
+  sort_order int not null default 0,
+  status varchar(20) not null default 'active',
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6),
+  constraint chk_public_assets_type
+    check (type in ('role', 'character', 'scene', 'prop', 'monster', 'vehicle', 'other', '角色', '场景', '道具', '怪物', '载具', '其他')),
+  constraint chk_public_assets_status
+    check (status in ('active', 'archived')),
+  constraint fk_public_assets_image_file
+    foreign key (image_file_id) references media_files(id) on delete set null
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
+
+create index idx_public_assets_type on public_assets (type, sort_order, created_at desc);
+create index idx_public_assets_status on public_assets (status, created_at desc);
+```
+
+### public_asset_images
+
+公共资产图集：保存同一个公共资产在不同角度、不同构图、不同场景下的参考图。角色资产至少建议包含主图、正面、左 45 度、右 45 度、侧面、背面、表情、动作、场景测试图。
+
+`media_file_id` 指向公共媒体文件。导入到项目时，图集图片也应按需复制到项目媒体记录；第一阶段可以只复制主图，后续导入弹窗允许用户勾选“导入图集”。
+
+```sql
+create table public_asset_images (
+  id char(36) primary key,
+  public_asset_id char(36) not null,
+  media_file_id char(36) not null,
+  role varchar(40) not null default 'reference',
+  title varchar(120) not null default '',
+  description text not null,
+  prompt text not null,
+  scene_prompt text not null,
+  angle varchar(40) not null default '',
+  tags json not null,
+  is_primary boolean not null default false,
+  sort_order int not null default 0,
+  created_at datetime(6) not null default current_timestamp(6),
+  updated_at datetime(6) not null default current_timestamp(6) on update current_timestamp(6),
+  constraint chk_public_asset_images_role
+    check (role in ('primary', 'front', 'left_45', 'right_45', 'side', 'back', 'expression', 'pose', 'scene', 'reference', 'other')),
+  constraint fk_public_asset_images_asset
+    foreign key (public_asset_id) references public_assets(id) on delete cascade,
+  constraint fk_public_asset_images_media
+    foreign key (media_file_id) references media_files(id) on delete cascade
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
+
+create index idx_public_asset_images_asset on public_asset_images (public_asset_id, sort_order, created_at);
+create index idx_public_asset_images_role on public_asset_images (public_asset_id, role, sort_order);
+```
+
+图集字段约定：
+
+| 字段 | 用途 |
+| --- | --- |
+| `role` | 图片用途，如主图、正面、侧面、背面、表情、动作、场景测试 |
+| `title` | 展示名，例如“正面全身”“雨夜街道测试” |
+| `description` | 这张图的可读说明 |
+| `prompt` | 生成这张图时使用的角色/资产提示词 |
+| `scene_prompt` | 如果是场景测试图，记录场景或镜头提示词 |
+| `angle` | 角度信息，例如 `front`、`left_45`、`back` |
+| `is_primary` | 是否为主图；同一资产建议只有一张主图，同时同步到 `public_assets.image_file_id` |
+
 ### frames
 
 关键帧时间轴。这里要保存“这一帧讲什么”和“这一帧持续多久”。
@@ -327,6 +404,8 @@ create index idx_video_segments_project_order on video_segments (project_id, ord
 | 项目列表 | 项目名、描述、宽高比 | `projects` |
 | 剧本 | 剧本文本 | `project_scripts` |
 | 资产库 | 名称、类型、描述、默认提示词、标签、图片 | `assets` + `media_files` |
+| 公共资产库 | 名称、类型、描述、默认提示词、主图 | `public_assets` + `media_files` |
+| 公共资产图集 | 角度、姿势、场景测试图、图集提示词 | `public_asset_images` + `media_files` |
 | 关键帧时间轴 | 顺序、时长、当前版本 | `frames` + `frame_versions` |
 | 帧详情 | 概要、人物、对白、动作、情绪、备注 | `frames` |
 | 底部输入舱 | 当前生成提示词、引用资产/帧 | `frames.current_prompt` + `frame_references` |
@@ -345,3 +424,4 @@ create index idx_video_segments_project_order on video_segments (project_id, ord
 1. 后端先实现 `projects`、`project_scripts`、`media_files`、`assets`、`frames`、`frame_versions`。
 2. 生成模型接入时再启用 `frame_references` 和 `generation_tasks`。
 3. 视频工作台开始做时，再启用 `video_segments`。
+4. 公共资产库稳定后，实现 `public_asset_images` 的图集上传、批量生成、详情页大图浏览和导入项目时的图集复制。

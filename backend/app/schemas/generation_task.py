@@ -10,6 +10,25 @@ GenerationTaskType = ImageTaskType | VideoTaskType
 GenerationTaskStatus = Literal["queued", "running", "succeeded", "failed", "canceled"]
 ImageResponseFormat = Literal["url", "b64_json"]
 ImageType = Literal["style", "character", "scene", "prop", "keyframe"]
+GenerationTargetType = Literal["public_asset_gallery", "project_asset", "keyframe", "video"]
+
+
+class GenerationTaskTarget(BaseModel):
+    type: GenerationTargetType
+    id: str | None = None
+    public_asset_id: str | None = None
+    title: str = ""
+    role: str = "generated"
+    angle: str = ""
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
+class GenerationTaskReference(BaseModel):
+    type: str
+    id: str | None = None
+    url: str | None = None
+    title: str = ""
 
 
 class GenerationTaskCreate(BaseModel):
@@ -24,6 +43,8 @@ class GenerationTaskCreate(BaseModel):
     asset_ids: list[str] | None = None
     auto_apply_asset_references: bool = True
     image_type: ImageType | None = None
+    target: GenerationTaskTarget | None = None
+    references: list[GenerationTaskReference] = Field(default_factory=list)
 
     @field_validator("prompt", "aspect_ratio")
     @classmethod
@@ -63,6 +84,7 @@ class GeneratedImage(BaseModel):
 
 class GenerationTaskResponse(BaseModel):
     task_id: UUID = Field(default_factory=uuid4)
+    owner_user_id: str | None = None
     status: GenerationTaskStatus
     task_type: GenerationTaskType
     provider: str = "apiz"
@@ -70,7 +92,15 @@ class GenerationTaskResponse(BaseModel):
     prompt: str
     aspect_ratio: str
     size: str
+    target_type: str | None = None
+    target_id: str | None = None
+    target_payload: dict[str, Any] = Field(default_factory=dict)
+    reference_payload: list[dict[str, Any]] = Field(default_factory=list)
     images: list[GeneratedImage] = Field(default_factory=list)
     usage: dict[str, Any] | None = None
     response_payload: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None
+
+
+class GenerationTaskList(BaseModel):
+    items: list[GenerationTaskResponse]

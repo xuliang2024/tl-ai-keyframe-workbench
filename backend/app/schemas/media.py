@@ -48,6 +48,7 @@ class MediaFileRead(BaseModel):
 
     id: str
     project_id: str | None
+    owner_user_id: str | None = None
     file_type: str
     bucket: str
     object_key: str

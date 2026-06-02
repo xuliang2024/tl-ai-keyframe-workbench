@@ -56,6 +56,20 @@ class ObjectStorageClient:
         )
         return self.public_url(object_key)
 
+    def copy_object(self, source_key: str, target_key: str) -> str:
+        if self.provider == "local":
+            return self.public_url(target_key)
+        if self.provider != "tos":
+            raise ObjectStorageError("Only TOS object copies are supported")
+
+        client = self._tos_client()
+        client.copy_object(
+            Bucket=self.bucket,
+            Key=target_key,
+            CopySource={"Bucket": self.bucket, "Key": source_key},
+        )
+        return self.public_url(target_key)
+
     def _tos_client(self):
         if not self.bucket or not self.region or not self.endpoint:
             raise ObjectStorageError("TOS bucket, region and endpoint must be configured")

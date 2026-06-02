@@ -26,6 +26,7 @@ class AssetRead(BaseModel):
 
     id: str
     project_id: str
+    owner_user_id: str | None = None
     type: str
     name: str
     description: str

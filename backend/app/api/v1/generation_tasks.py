@@ -4,14 +4,15 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 import httpx
 
+from app.api.dependencies import get_current_user
 from app.core.config import settings
 from app.integrations.apiz_generation import ApizGenerationClient, ApizGenerationError
 from app.integrations.object_storage import ObjectStorageError, get_object_storage_client
-from app.schemas.generation_task import GenerationTaskCreate, GenerationTaskResponse
-from app.services.memory_store import GenerationTaskRecord
+from app.schemas.generation_task import GenerationTaskCreate, GenerationTaskList, GenerationTaskResponse
+from app.services.memory_store import GenerationTaskRecord, UserRecord
 from app.services.database_store import store
 from app.services.image_prompt_requirements import compose_image_prompt
 
@@ -25,14 +26,19 @@ class PreparedGenerationRequest:
     prompt: str
     image: str | list[str] | None
     request_payload: dict[str, Any]
+    target_type: str | None = None
+    target_id: str | None = None
+    target_payload: dict[str, Any] | None = None
+    reference_payload: list[dict[str, Any]] | None = None
 
 
 @router.post("")
 async def create_generation_task(
     payload: GenerationTaskCreate,
     background_tasks: BackgroundTasks,
+    current_user: UserRecord = Depends(get_current_user),
 ) -> GenerationTaskResponse:
-    prepared = await _prepare_generation_request(payload)
+    prepared = await _prepare_generation_request(payload, owner_user_id=current_user.id)
 
     size = prepared.payload.size or settings.image_generation_size
     model_name = _model_name_for_task(prepared.task_type)
@@ -44,19 +50,39 @@ async def create_generation_task(
         aspect_ratio=prepared.payload.aspect_ratio,
         size=size,
         request_payload=prepared.request_payload,
+        owner_user_id=current_user.id,
+        target_type=prepared.target_type,
+        target_id=prepared.target_id,
+        target_payload=prepared.target_payload,
+        reference_payload=prepared.reference_payload,
     )
     background_tasks.add_task(_run_generation_task, task.id)
     return _task_response(task)
 
 
-async def _prepare_generation_request(payload: GenerationTaskCreate) -> PreparedGenerationRequest:
-    payload = await _resolve_project_from_frame(payload)
-    prepared_prompt = await _compose_prompt_for_image_type(payload)
-    asset_references = await _collect_keyframe_asset_references(payload)
+async def _prepare_generation_request(
+    payload: GenerationTaskCreate,
+    owner_user_id: str | None = None,
+) -> PreparedGenerationRequest:
+    payload = await _resolve_project_from_frame(payload, owner_user_id=owner_user_id)
+    payload, target_type, target_id, target_payload, target_references = await _prepare_generation_target(
+        payload,
+        owner_user_id=owner_user_id,
+    )
+    if payload.project_id and not await store.get_project(payload.project_id, owner_user_id=owner_user_id):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="project_id not found")
+    prepared_prompt = await _compose_prompt_for_image_type(payload, owner_user_id=owner_user_id)
+    asset_references = await _collect_keyframe_asset_references(payload, owner_user_id=owner_user_id)
     prompt_with_references = _append_asset_reference_guidance(prepared_prompt, asset_references)
+    explicit_references = [reference.model_dump() for reference in payload.references]
+    reference_urls = [
+        str(reference.get("url"))
+        for reference in [*target_references, *explicit_references]
+        if reference.get("url")
+    ]
     image_with_references = _merge_image_inputs(
         payload.image,
-        [reference["url"] for reference in asset_references],
+        [reference["url"] for reference in asset_references] + reference_urls,
     )
     final_prompt, final_image = await _apply_project_style(
         project_id=payload.project_id,
@@ -64,6 +90,7 @@ async def _prepare_generation_request(payload: GenerationTaskCreate) -> Prepared
         image=image_with_references,
         apply_style_prompt=payload.image_type is None,
         apply_style_reference=payload.image_type in ("scene", "keyframe") or payload.image_type is None,
+        owner_user_id=owner_user_id,
     )
 
     task_type = payload.task_type or ("image_to_image" if final_image else "text_to_image")
@@ -78,15 +105,19 @@ async def _prepare_generation_request(payload: GenerationTaskCreate) -> Prepared
     request_payload = {
         "task_type": task_type,
         "image": final_image,
+        "user_prompt": payload.prompt,
         "output_format": settings.image_generation_output_format or None,
         "response_format": "url",
         "watermark": payload.watermark,
         "project_id": payload.project_id,
+        "owner_user_id": owner_user_id,
         "frame_id": payload.frame_id,
         "asset_ids": payload.asset_ids,
         "auto_apply_asset_references": payload.auto_apply_asset_references,
         "reference_assets": asset_references,
         "image_type": payload.image_type,
+        "target": target_payload,
+        "references": [*target_references, *explicit_references],
     }
     return PreparedGenerationRequest(
         payload=payload,
@@ -94,14 +125,69 @@ async def _prepare_generation_request(payload: GenerationTaskCreate) -> Prepared
         prompt=final_prompt,
         image=final_image,
         request_payload=request_payload,
+        target_type=target_type,
+        target_id=target_id,
+        target_payload=target_payload,
+        reference_payload=[*target_references, *explicit_references],
     )
 
 
-async def _resolve_project_from_frame(payload: GenerationTaskCreate) -> GenerationTaskCreate:
+async def _prepare_generation_target(
+    payload: GenerationTaskCreate,
+    owner_user_id: str | None = None,
+) -> tuple[GenerationTaskCreate, str | None, str | None, dict[str, Any] | None, list[dict[str, Any]]]:
+    if not payload.target:
+        return payload, None, None, None, []
+    target = payload.target
+    target_id = target.public_asset_id or target.id
+    if target.type != "public_asset_gallery":
+        return payload, target.type, target_id, target.model_dump(), []
+    if not target_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="public_asset_id is required")
+
+    public_asset = await store.get_public_asset(target_id)
+    if not public_asset:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="public asset target not found")
+
+    references: list[dict[str, Any]] = []
+    primary_url = None
+    if public_asset.image_file_id:
+        media_file = await store.get_media_file(public_asset.image_file_id)
+        if media_file and media_file.url:
+            primary_url = media_file.url
+            references.append(
+                {
+                    "type": "public_asset",
+                    "id": public_asset.id,
+                    "title": public_asset.name,
+                    "url": media_file.url,
+                }
+            )
+
+    final_prompt = "\n".join(
+        line
+        for line in (
+            public_asset.default_prompt.strip(),
+            "Use the attached public character asset as the identity anchor. Preserve face, hairstyle, costume silhouette, material, color, and character identity.",
+            payload.prompt.strip(),
+        )
+        if line
+    )
+    image = payload.image or primary_url
+    target_payload = target.model_dump()
+    target_payload["public_asset_id"] = public_asset.id
+    target_payload["public_asset_name"] = public_asset.name
+    return payload.model_copy(update={"prompt": final_prompt, "image": image}), target.type, public_asset.id, target_payload, references
+
+
+async def _resolve_project_from_frame(
+    payload: GenerationTaskCreate,
+    owner_user_id: str | None = None,
+) -> GenerationTaskCreate:
     if not payload.frame_id:
         return payload
 
-    frame = await store.get_frame(payload.frame_id)
+    frame = await store.get_frame(payload.frame_id, owner_user_id=owner_user_id)
     if not frame:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="frame_id not found")
     if payload.project_id and payload.project_id != frame.project_id:
@@ -112,13 +198,16 @@ async def _resolve_project_from_frame(payload: GenerationTaskCreate) -> Generati
     return payload.model_copy(update={"project_id": payload.project_id or frame.project_id})
 
 
-async def _compose_prompt_for_image_type(payload: GenerationTaskCreate) -> str:
+async def _compose_prompt_for_image_type(
+    payload: GenerationTaskCreate,
+    owner_user_id: str | None = None,
+) -> str:
     if not payload.image_type:
         return payload.prompt
 
     project_style_prompt = None
     if payload.project_id:
-        project = await store.get_project(payload.project_id)
+        project = await store.get_project(payload.project_id, owner_user_id=owner_user_id)
         if project and project.auto_apply_style_prompt:
             project_style_prompt = project.style_prompt
 
@@ -139,11 +228,12 @@ async def _apply_project_style(
     image: str | list[str] | None,
     apply_style_prompt: bool = True,
     apply_style_reference: bool = True,
+    owner_user_id: str | None = None,
 ) -> tuple[str, str | list[str] | None]:
     if not project_id:
         return prompt, image
 
-    project = await store.get_project(project_id)
+    project = await store.get_project(project_id, owner_user_id=owner_user_id)
     if not project:
         return prompt, image
 
@@ -153,7 +243,10 @@ async def _apply_project_style(
 
     final_image = image
     if apply_style_reference and project.auto_apply_style_reference and project.style_reference_image_file_id:
-        media_file = await store.get_media_file(project.style_reference_image_file_id)
+        media_file = await store.get_media_file(
+            project.style_reference_image_file_id,
+            owner_user_id=owner_user_id,
+        )
         if media_file and media_file.url:
             image_items = image if isinstance(image, list) else ([image] if image else [])
             final_image = [*image_items, media_file.url]
@@ -161,14 +254,17 @@ async def _apply_project_style(
     return final_prompt, final_image
 
 
-async def _collect_keyframe_asset_references(payload: GenerationTaskCreate) -> list[dict[str, str]]:
+async def _collect_keyframe_asset_references(
+    payload: GenerationTaskCreate,
+    owner_user_id: str | None = None,
+) -> list[dict[str, str]]:
     if payload.image_type != "keyframe" or not payload.auto_apply_asset_references:
         return []
 
     assets = []
     if payload.asset_ids:
         for asset_id in payload.asset_ids:
-            asset = await store.get_asset(asset_id)
+            asset = await store.get_asset(asset_id, owner_user_id=owner_user_id)
             if not asset:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"asset_id not found: {asset_id}")
             if payload.project_id and asset.project_id != payload.project_id:
@@ -178,13 +274,13 @@ async def _collect_keyframe_asset_references(payload: GenerationTaskCreate) -> l
                 )
             assets.append(asset)
     elif payload.project_id:
-        assets = await store.list_assets(payload.project_id)
+        assets = await store.list_assets(payload.project_id, owner_user_id=owner_user_id)
 
     references: list[dict[str, str]] = []
     for asset in assets:
         if not asset.image_file_id:
             continue
-        media_file = await store.get_media_file(asset.image_file_id)
+        media_file = await store.get_media_file(asset.image_file_id, owner_user_id=owner_user_id)
         if not media_file or not media_file.url:
             continue
         references.append(
@@ -233,19 +329,45 @@ def _merge_image_inputs(
 
 
 @router.get("/{task_id}")
-async def get_generation_task(task_id: str) -> GenerationTaskResponse:
-    task = await store.get_generation_task(task_id)
+async def get_generation_task(
+    task_id: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> GenerationTaskResponse:
+    task = await store.get_generation_task(task_id, owner_user_id=current_user.id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="generation task not found")
     return _task_response(task)
+
+
+@router.get("")
+async def list_generation_tasks(
+    status: str | None = Query(default=None),
+    task_type: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
+    target_type: str | None = Query(default=None),
+    target_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    current_user: UserRecord = Depends(get_current_user),
+) -> GenerationTaskList:
+    tasks = await store.list_generation_tasks(
+        owner_user_id=current_user.id,
+        status=status,
+        task_type=task_type,
+        project_id=project_id,
+        target_type=target_type,
+        target_id=target_id,
+        limit=limit,
+    )
+    return GenerationTaskList(items=[_task_response(task) for task in tasks])
 
 
 @router.post("/{task_id}/retry")
 async def retry_generation_task(
     task_id: str,
     background_tasks: BackgroundTasks,
+    current_user: UserRecord = Depends(get_current_user),
 ) -> GenerationTaskResponse:
-    task = await store.get_generation_task(task_id)
+    task = await store.get_generation_task(task_id, owner_user_id=current_user.id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="generation task not found")
     if task.status in ("queued", "running"):
@@ -266,8 +388,11 @@ async def retry_generation_task(
 
 
 @router.post("/{task_id}/cancel")
-async def cancel_generation_task(task_id: str) -> GenerationTaskResponse:
-    task = await store.get_generation_task(task_id)
+async def cancel_generation_task(
+    task_id: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> GenerationTaskResponse:
+    task = await store.get_generation_task(task_id, owner_user_id=current_user.id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="generation task not found")
     if task.status in ("succeeded", "failed", "canceled"):
@@ -348,6 +473,7 @@ async def _persist_generated_images(
         return []
 
     project_id = request_payload.get("project_id")
+    owner_user_id = request_payload.get("owner_user_id")
     output_format = request_payload.get("output_format") or "png"
     extension = "jpg" if output_format == "jpeg" else output_format
     content_type = "image/jpeg" if output_format == "jpeg" else "image/png"
@@ -372,6 +498,7 @@ async def _persist_generated_images(
             url=public_url,
             mime_type=final_content_type,
             size_bytes=len(image_bytes),
+            owner_user_id=owner_user_id,
             metadata={
                 "generation_task_id": task_id,
                 "source_size": image.get("size"),
@@ -379,7 +506,11 @@ async def _persist_generated_images(
         )
         if not media_file:
             raise ValueError("Project not found")
-        completed_media_file = await store.complete_media_file(media_file.id, size_bytes=len(image_bytes))
+        completed_media_file = await store.complete_media_file(
+            media_file.id,
+            size_bytes=len(image_bytes),
+            owner_user_id=owner_user_id,
+        )
         persisted_images.append(
             {
                 "url": public_url,
@@ -449,6 +580,9 @@ async def _mark_generation_succeeded(
     images: list[dict[str, Any]],
 ) -> None:
     public_response_payload = {**response_payload, "data": images}
+    task = await store.get_generation_task(task_id)
+    if task and task.target_type == "public_asset_gallery":
+        await _attach_images_to_public_asset_gallery(task, images)
     await store.update_generation_task(
         task_id,
         status="succeeded",
@@ -456,6 +590,41 @@ async def _mark_generation_succeeded(
         usage=response_payload.get("usage"),
         response_payload=public_response_payload,
     )
+
+
+async def _attach_images_to_public_asset_gallery(
+    task: GenerationTaskRecord,
+    images: list[dict[str, Any]],
+) -> None:
+    public_asset_id = task.target_id or task.target_payload.get("public_asset_id")
+    if not public_asset_id:
+        return
+    existing_images = await store.list_public_asset_images(str(public_asset_id))
+    sort_order = len(existing_images)
+    for index, image in enumerate(images):
+        media_file_id = image.get("media_file_id")
+        if not media_file_id:
+            continue
+        title = task.target_payload.get("title") or task.request_payload.get("user_prompt") or "生成图"
+        if len(images) > 1:
+            title = f"{title} {index + 1}"
+        await store.create_public_asset_image(
+            public_asset_id=str(public_asset_id),
+            media_file_id=str(media_file_id),
+            role=task.target_payload.get("role") or "generated",
+            title=str(title)[:80],
+            description=task.target_payload.get("description") or "",
+            prompt=task.prompt,
+            scene_prompt=task.request_payload.get("user_prompt") or "",
+            angle=task.target_payload.get("angle") or "",
+            tags=task.target_payload.get("tags") or ["AI生成"],
+            is_primary=False,
+            sort_order=sort_order + index,
+            source_type="generated",
+            generation_task_id=task.id,
+            generation_prompt=task.prompt,
+            created_by_user_id=task.owner_user_id,
+        )
 
 
 async def _mark_generation_failed(task_id: str, error_message: str) -> None:
@@ -470,6 +639,7 @@ async def _mark_generation_failed(task_id: str, error_message: str) -> None:
 def _task_response(task: GenerationTaskRecord) -> GenerationTaskResponse:
     return GenerationTaskResponse(
         task_id=task.id,
+        owner_user_id=task.owner_user_id,
         status=task.status,
         task_type=task.task_type,
         provider=task.provider,
@@ -477,6 +647,10 @@ def _task_response(task: GenerationTaskRecord) -> GenerationTaskResponse:
         prompt=task.prompt,
         aspect_ratio=task.aspect_ratio,
         size=task.size,
+        target_type=task.target_type,
+        target_id=task.target_id,
+        target_payload=task.target_payload,
+        reference_payload=task.reference_payload,
         images=task.images,
         usage=task.usage,
         response_payload=task.response_payload,

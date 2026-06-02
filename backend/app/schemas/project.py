@@ -22,6 +22,7 @@ class ProjectRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    owner_user_id: str | None = None
     name: str
     description: str
     aspect_ratio: str

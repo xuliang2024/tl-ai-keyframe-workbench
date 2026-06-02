@@ -6,6 +6,7 @@ from app.api.v1 import generation_tasks
 from app.integrations.apiz_generation import ApizGenerationClient
 from app.main import app
 from app.services.database_store import store
+from conftest import auth_headers
 
 
 class DummyStorage:
@@ -31,6 +32,7 @@ def test_create_text_to_image_task(monkeypatch) -> None:
     monkeypatch.setattr(generation_tasks, "get_object_storage_client", lambda: DummyStorage())
 
     client = TestClient(app)
+    client.headers.update(auth_headers(client, username="gen_text_image"))
     response = client.post(
         "/api/v1/generation-tasks",
         json={"prompt": "雨夜街头的女主角", "aspect_ratio": "16:9", "project_id": None},
@@ -53,6 +55,41 @@ def test_create_text_to_image_task(monkeypatch) -> None:
     assert task_body["images"][0]["url"].startswith("https://cdn.51sut.com/media/unassigned/generated/images/")
     assert task_body["images"][0]["media_file_id"]
     assert "b64_json" not in task_body["images"][0] or task_body["images"][0]["b64_json"] is None
+
+
+def test_list_generation_tasks_supports_filters(monkeypatch) -> None:
+    store.reset()
+
+    async def fake_generate_image(self, **kwargs):
+        return {
+            "model": "openai/gpt-image-2",
+            "data": [{"b64_json": "cG5nLWJ5dGVz", "size": "3840x2160"}],
+        }
+
+    monkeypatch.setattr(generation_tasks.ApizGenerationClient, "generate_image", fake_generate_image)
+    monkeypatch.setattr(generation_tasks, "get_object_storage_client", lambda: DummyStorage())
+
+    client = TestClient(app)
+    headers = auth_headers(client, username="gen_task_list")
+    project = client.post("/api/v1/projects", json={"name": "任务列表项目"}, headers=headers).json()
+    created = client.post(
+        "/api/v1/generation-tasks",
+        json={
+            "prompt": "列表测试图",
+            "aspect_ratio": "16:9",
+            "project_id": project["id"],
+        },
+        headers=headers,
+    ).json()
+
+    list_response = client.get(
+        "/api/v1/generation-tasks",
+        params={"status": "succeeded", "task_type": "text_to_image", "project_id": project["id"]},
+        headers=headers,
+    )
+    assert list_response.status_code == 200
+    items = list_response.json()["items"]
+    assert [item["task_id"] for item in items] == [created["task_id"]]
 
 
 def test_apiz_extracts_object_image_urls_once() -> None:
@@ -80,6 +117,7 @@ def test_create_image_to_image_task(monkeypatch) -> None:
     monkeypatch.setattr(generation_tasks, "get_object_storage_client", lambda: DummyStorage())
 
     client = TestClient(app)
+    client.headers.update(auth_headers(client, username="gen_image_to_image"))
     response = client.post(
         "/api/v1/generation-tasks",
         json={
@@ -110,6 +148,7 @@ def test_generation_task_auto_applies_project_style(monkeypatch) -> None:
     store.reset()
     captured = {}
     client = TestClient(app)
+    client.headers.update(auth_headers(client, username="gen_project_style"))
     project = client.post(
         "/api/v1/projects",
         json={"name": "风格项目", "description": "", "aspect_ratio": "9:16"},
@@ -178,6 +217,7 @@ def test_keyframe_generation_auto_applies_asset_references(monkeypatch) -> None:
     store.reset()
     captured = {}
     client = TestClient(app)
+    client.headers.update(auth_headers(client, username="gen_keyframe_refs"))
     project = client.post("/api/v1/projects", json={"name": "关键帧资产参考"}).json()
     media_file = asyncio.run(
         store.create_media_file(
@@ -253,6 +293,7 @@ def test_keyframe_generation_auto_applies_asset_references(monkeypatch) -> None:
 def test_project_style_reference_can_be_cleared() -> None:
     store.reset()
     client = TestClient(app)
+    client.headers.update(auth_headers(client, username="gen_clear_style"))
     project = client.post("/api/v1/projects", json={"name": "清除参考图"}).json()
     media_file = asyncio.run(
         store.create_media_file(
@@ -286,6 +327,7 @@ def test_project_style_reference_can_be_cleared() -> None:
 def test_image_to_image_requires_image() -> None:
     store.reset()
     client = TestClient(app)
+    client.headers.update(auth_headers(client, username="gen_requires_image"))
     response = client.post(
         "/api/v1/generation-tasks",
         json={"task_type": "image_to_image", "prompt": "改成赛博朋克", "aspect_ratio": "1:1"},
@@ -308,6 +350,7 @@ def test_video_task_uses_apiz_provider(monkeypatch) -> None:
 
     monkeypatch.setattr(generation_tasks.ApizGenerationClient, "generate_video", fake_generate_video)
     client = TestClient(app)
+    client.headers.update(auth_headers(client, username="gen_video"))
 
     response = client.post(
         "/api/v1/generation-tasks",

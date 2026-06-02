@@ -12,17 +12,19 @@ McpTool = Callable[[dict[str, Any], McpContext], Awaitable[dict[str, Any]]]
 
 
 async def project_tool(arguments: dict[str, Any], context: McpContext = None) -> dict[str, Any]:
+    owner_user_id = _owner_user_id(context)
     action = arguments.get("action", "list")
     if action == "list":
-        return _ok(items=[_record_dict(item) for item in await store.list_projects()])
+        return _ok(items=[_record_dict(item) for item in await store.list_projects(owner_user_id=owner_user_id)])
     if action == "get":
-        project = await store.get_project(_required(arguments, "project_id"))
+        project = await store.get_project(_required(arguments, "project_id"), owner_user_id=owner_user_id)
         return _ok(project=_record_dict(project)) if project else _not_found("Project not found")
     if action == "create":
         project = await store.create_project(
             name=_required(arguments, "name"),
             description=arguments.get("description", ""),
             aspect_ratio=arguments.get("aspect_ratio", "16:9"),
+            owner_user_id=owner_user_id,
         )
         return _ok(project=_record_dict(project))
     if action == "update":
@@ -41,36 +43,39 @@ async def project_tool(arguments: dict[str, Any], context: McpContext = None) ->
                     "auto_apply_style_reference",
                 },
             ),
+            owner_user_id=owner_user_id,
         )
         return _ok(project=_record_dict(project)) if project else _not_found("Project not found")
     if action == "delete":
-        deleted = await store.delete_project(_required(arguments, "project_id"))
+        deleted = await store.delete_project(_required(arguments, "project_id"), owner_user_id=owner_user_id)
         return _ok(deleted=deleted) if deleted else _not_found("Project not found")
     return _bad_action(action)
 
 
 async def script_tool(arguments: dict[str, Any], context: McpContext = None) -> dict[str, Any]:
+    owner_user_id = _owner_user_id(context)
     action = arguments.get("action", "get")
     project_id = _required(arguments, "project_id")
     if action == "get":
-        script = await store.get_script(project_id)
+        script = await store.get_script(project_id, owner_user_id=owner_user_id)
         return _ok(script=_record_dict(script)) if script else _not_found("Project script not found")
     if action in {"set", "update"}:
-        script = await store.update_script(project_id, arguments.get("content", ""))
+        script = await store.update_script(project_id, arguments.get("content", ""), owner_user_id=owner_user_id)
         return _ok(script=_record_dict(script)) if script else _not_found("Project not found")
     if action == "clear":
-        script = await store.clear_script(project_id)
+        script = await store.clear_script(project_id, owner_user_id=owner_user_id)
         return _ok(script=_record_dict(script)) if script else _not_found("Project not found")
     return _bad_action(action)
 
 
 async def asset_tool(arguments: dict[str, Any], context: McpContext = None) -> dict[str, Any]:
+    owner_user_id = _owner_user_id(context)
     action = arguments.get("action", "list")
     if action == "list":
         project_id = _required(arguments, "project_id")
-        if not await store.get_project(project_id):
+        if not await store.get_project(project_id, owner_user_id=owner_user_id):
             return _not_found("Project not found")
-        return _ok(items=[_record_dict(item) for item in await store.list_assets(project_id)])
+        return _ok(items=[_record_dict(item) for item in await store.list_assets(project_id, owner_user_id=owner_user_id)])
     if action == "create":
         asset = await store.create_asset(
             project_id=_required(arguments, "project_id"),
@@ -81,6 +86,7 @@ async def asset_tool(arguments: dict[str, Any], context: McpContext = None) -> d
             tags=arguments.get("tags", []),
             image_file_id=arguments.get("image_file_id"),
             sort_order=arguments.get("sort_order", 0),
+            owner_user_id=owner_user_id,
         )
         return _ok(asset=_record_dict(asset)) if asset else _not_found("Project not found")
     if action == "update":
@@ -90,21 +96,23 @@ async def asset_tool(arguments: dict[str, Any], context: McpContext = None) -> d
                 arguments,
                 {"name", "type", "description", "default_prompt", "tags", "image_file_id", "sort_order"},
             ),
+            owner_user_id=owner_user_id,
         )
         return _ok(asset=_record_dict(asset)) if asset else _not_found("Asset not found")
     if action == "delete":
-        deleted = await store.delete_asset(_required(arguments, "asset_id"))
+        deleted = await store.delete_asset(_required(arguments, "asset_id"), owner_user_id=owner_user_id)
         return _ok(deleted=deleted) if deleted else _not_found("Asset not found")
     return _bad_action(action)
 
 
 async def frame_tool(arguments: dict[str, Any], context: McpContext = None) -> dict[str, Any]:
+    owner_user_id = _owner_user_id(context)
     action = arguments.get("action", "list")
     if action == "list":
         project_id = _required(arguments, "project_id")
-        if not await store.get_project(project_id):
+        if not await store.get_project(project_id, owner_user_id=owner_user_id):
             return _not_found("Project not found")
-        return _ok(items=[_record_dict(item) for item in await store.list_frames(project_id)])
+        return _ok(items=[_record_dict(item) for item in await store.list_frames(project_id, owner_user_id=owner_user_id)])
     if action == "create":
         frame = await store.create_frame(
             project_id=_required(arguments, "project_id"),
@@ -112,6 +120,7 @@ async def frame_tool(arguments: dict[str, Any], context: McpContext = None) -> d
             order_index=arguments.get("order_index"),
             duration_ms=arguments.get("duration_ms", 3000),
             current_prompt=arguments.get("current_prompt", arguments.get("prompt", "")),
+            owner_user_id=owner_user_id,
         )
         return _ok(frame=_record_dict(frame)) if frame else _not_found("Project not found")
     if action == "update":
@@ -131,15 +140,17 @@ async def frame_tool(arguments: dict[str, Any], context: McpContext = None) -> d
                     "selected_version_id",
                 },
             ),
+            owner_user_id=owner_user_id,
         )
         return _ok(frame=_record_dict(frame)) if frame else _not_found("Frame not found")
     if action == "delete":
-        deleted = await store.delete_frame(_required(arguments, "frame_id"))
+        deleted = await store.delete_frame(_required(arguments, "frame_id"), owner_user_id=owner_user_id)
         return _ok(deleted=deleted) if deleted else _not_found("Frame not found")
     return _bad_action(action)
 
 
 async def generate_tool(arguments: dict[str, Any], context: McpContext = None) -> dict[str, Any]:
+    owner_user_id = _owner_user_id(context)
     try:
         payload = GenerationTaskCreate(
             task_type=arguments.get("task_type"),
@@ -160,7 +171,7 @@ async def generate_tool(arguments: dict[str, Any], context: McpContext = None) -
     from app.core.config import settings
 
     try:
-        prepared = await _prepare_generation_request(payload)
+        prepared = await _prepare_generation_request(payload, owner_user_id=owner_user_id)
     except Exception as exc:
         return {"success": False, "error": str(exc)}
 
@@ -172,21 +183,24 @@ async def generate_tool(arguments: dict[str, Any], context: McpContext = None) -
         aspect_ratio=prepared.payload.aspect_ratio,
         size=prepared.payload.size or settings.image_generation_size,
         request_payload=prepared.request_payload,
+        owner_user_id=owner_user_id,
     )
     asyncio.create_task(_run_generation_task(task.id))
     return _ok(task=_jsonable(_task_response(task)))
 
 
 async def get_result_tool(arguments: dict[str, Any], context: McpContext = None) -> dict[str, Any]:
+    owner_user_id = _owner_user_id(context)
     task_id = _required(arguments, "task_id")
-    task = await store.get_generation_task(task_id)
+    task = await store.get_generation_task(task_id, owner_user_id=owner_user_id)
     return _ok(task=_jsonable(_task_response(task))) if task else _not_found("Generation task not found")
 
 
 async def media_tool(arguments: dict[str, Any], context: McpContext = None) -> dict[str, Any]:
+    owner_user_id = _owner_user_id(context)
     action = arguments.get("action", "get")
     if action == "get":
-        media_file = await store.get_media_file(_required(arguments, "media_file_id"))
+        media_file = await store.get_media_file(_required(arguments, "media_file_id"), owner_user_id=owner_user_id)
         return _ok(media_file=_record_dict(media_file)) if media_file else _not_found("Media file not found")
     return {
         "success": False,
@@ -375,6 +389,12 @@ def _required(arguments: dict[str, Any], key: str) -> Any:
 
 def _allowed_fields(arguments: dict[str, Any], names: set[str]) -> dict[str, Any]:
     return {key: arguments[key] for key in names if key in arguments and arguments[key] is not None}
+
+
+def _owner_user_id(context: McpContext) -> str:
+    if not context or not context.get("user_id"):
+        raise ValueError("MCP user context is required")
+    return str(context["user_id"])
 
 
 def _record_dict(record: Any) -> dict[str, Any] | None:

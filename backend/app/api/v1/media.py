@@ -4,8 +4,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.dependencies import get_current_user
 from app.core.config import settings
 from app.integrations.object_storage import ObjectStorageError, get_object_storage_client
 from app.schemas.media import (
@@ -15,13 +16,17 @@ from app.schemas.media import (
     MediaUploadUrlRead,
 )
 from app.services.database_store import store
+from app.services.memory_store import UserRecord
 
 router = APIRouter()
 
 
 @router.post("/upload", response_model=MediaUploadUrlRead)
 @router.post("/upload-url", response_model=MediaUploadUrlRead)
-async def create_upload_url(payload: MediaUploadUrlCreate) -> MediaUploadUrlRead:
+async def create_upload_url(
+    payload: MediaUploadUrlCreate,
+    current_user: UserRecord = Depends(get_current_user),
+) -> MediaUploadUrlRead:
     _validate_upload_size(payload.file_type, payload.size_bytes)
 
     storage = get_object_storage_client()
@@ -36,6 +41,7 @@ async def create_upload_url(payload: MediaUploadUrlCreate) -> MediaUploadUrlRead
         url=public_url,
         mime_type=payload.mime_type,
         size_bytes=payload.size_bytes,
+        owner_user_id=current_user.id,
         metadata={
             "original_filename": payload.filename,
             **payload.metadata,
@@ -65,7 +71,11 @@ async def create_upload_url(payload: MediaUploadUrlCreate) -> MediaUploadUrlRead
 
 
 @router.post("/{media_file_id}/complete", response_model=MediaFileRead)
-async def complete_upload(media_file_id: str, payload: MediaUploadComplete) -> MediaFileRead:
+async def complete_upload(
+    media_file_id: str,
+    payload: MediaUploadComplete,
+    current_user: UserRecord = Depends(get_current_user),
+) -> MediaFileRead:
     media_file = await store.complete_media_file(
         media_file_id,
         width=payload.width,
@@ -73,6 +83,7 @@ async def complete_upload(media_file_id: str, payload: MediaUploadComplete) -> M
         duration_ms=payload.duration_ms,
         size_bytes=payload.size_bytes,
         metadata=payload.metadata,
+        owner_user_id=current_user.id,
     )
     if not media_file:
         raise HTTPException(status_code=404, detail="Media file not found")
@@ -80,8 +91,11 @@ async def complete_upload(media_file_id: str, payload: MediaUploadComplete) -> M
 
 
 @router.get("/{media_file_id}", response_model=MediaFileRead)
-async def get_media_file(media_file_id: str) -> MediaFileRead:
-    media_file = await store.get_media_file(media_file_id)
+async def get_media_file(
+    media_file_id: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> MediaFileRead:
+    media_file = await store.get_media_file(media_file_id, owner_user_id=current_user.id)
     if not media_file:
         raise HTTPException(status_code=404, detail="Media file not found")
     return MediaFileRead.model_validate(media_file)
